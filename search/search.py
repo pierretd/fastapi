@@ -1,6 +1,28 @@
 import pandas as pd
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance, SparseVectorParams, SparseIndexParams, SparseVector
+from qdrant_client.models import PointStruct, VectorParams, Distance
+
+# Handle version differences for sparse vector features
+try:
+    # Try to import sparse vector features (newer versions)
+    from qdrant_client.models import SparseVectorParams, SparseIndexParams, SparseVector
+    HAS_SPARSE_SUPPORT = True
+except ImportError:
+    # Fallback for older versions - define placeholder classes if needed
+    HAS_SPARSE_SUPPORT = False
+    class SparseVectorParams:
+        def __init__(self, *args, **kwargs):
+            pass
+    
+    class SparseIndexParams:
+        def __init__(self, *args, **kwargs):
+            pass
+    
+    class SparseVector:
+        def __init__(self, *args, **kwargs):
+            self.indices = []
+            self.values = []
+
 from fastembed import TextEmbedding
 import os
 from dotenv import load_dotenv
@@ -12,7 +34,7 @@ from bs4 import BeautifulSoup
 from functools import lru_cache
 import numpy as np
 import time
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union, Any
 
 load_dotenv()
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -30,7 +52,78 @@ CSV_FILE = os.getenv("CSV_FILE", "jan-25-released-games copy.csv")
 # Connect to Qdrant
 qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
-# Set the models for dense and sparse embeddings
+# Add version-compatible methods to QdrantClient
+def set_model(self, model_name):
+    """Set the dense embedding model (monkey-patch for compatibility)"""
+    self._model_name = model_name
+    
+def set_sparse_model(self, model_name):
+    """Set the sparse embedding model (monkey-patch for compatibility)"""
+    self._sparse_model_name = model_name
+
+def get_fastembed_vector_params(self):
+    """Return VectorParams for fastembed (monkey-patch for compatibility)"""
+    return VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+
+def get_fastembed_sparse_vector_params(self):
+    """Return SparseVectorParams for fastembed (monkey-patch for compatibility)"""
+    if HAS_SPARSE_SUPPORT:
+        try:
+            # Try using the class if it exists (newer versions)
+            return SparseVectorParams(index=SparseIndexParams())
+        except Exception:
+            # For older versions, return None which will skip sparse vectors
+            print("Warning: SparseVectorParams class exists but initialization failed")
+            return None
+    else:
+        print("Warning: Sparse vector support not available in this version of qdrant-client")
+        return None
+
+def add(self, collection_name, documents, metadata, ids):
+    """
+    Add documents to Qdrant collection with compatibility for various versions.
+    
+    This is a version-compatible replacement for the add method that comes with 
+    newer versions of qdrant-client with fastembed integration.
+    """
+    # Generate embeddings using TextEmbedding
+    print(f"Generating embeddings for {len(documents)} documents")
+    embeddings = list(embedder.embed(documents))
+    
+    # Create points
+    points = []
+    for i, (doc_id, embedding, meta) in enumerate(zip(ids, embeddings, metadata)):
+        # Create a point with the embedding and metadata
+        if isinstance(doc_id, str) and not doc_id.isdigit():
+            # Use the string as is
+            point_id = doc_id
+        else:
+            # Convert to int if it's a number
+            point_id = int(doc_id)
+            
+        point = PointStruct(
+            id=point_id,
+            vector=embedding.tolist(),
+            payload=meta
+        )
+        points.append(point)
+    
+    # Upsert the points
+    print(f"Upserting {len(points)} points to collection {collection_name}")
+    self.upsert(
+        collection_name=collection_name,
+        points=points
+    )
+    return len(points)
+
+# Monkey-patch methods onto the QdrantClient class
+QdrantClient.set_model = set_model
+QdrantClient.set_sparse_model = set_sparse_model
+QdrantClient.get_fastembed_vector_params = get_fastembed_vector_params
+QdrantClient.get_fastembed_sparse_vector_params = get_fastembed_sparse_vector_params
+QdrantClient.add = add
+
+# Call the methods to initialize
 qdrant.set_model(EMBEDDING_MODEL)
 qdrant.set_sparse_model(SPARSE_MODEL)
 
@@ -76,12 +169,25 @@ def create_collection():
     except Exception:
         print(f"Collection {COLLECTION_NAME} doesn't exist yet or couldn't be deleted")
 
+    # Get configuration parameters
+    vectors_config = qdrant.get_fastembed_vector_params()
+    sparse_vectors_config = qdrant.get_fastembed_sparse_vector_params()
+    
     # Create the collection with proper configuration
-    qdrant.create_collection(
-        collection_name=COLLECTION_NAME,
-        vectors_config=qdrant.get_fastembed_vector_params(),
-        sparse_vectors_config=qdrant.get_fastembed_sparse_vector_params()
-    )
+    if sparse_vectors_config is not None:
+        # Create with sparse vectors if supported
+        qdrant.create_collection(
+            collection_name=COLLECTION_NAME,
+            vectors_config=vectors_config,
+            sparse_vectors_config=sparse_vectors_config
+        )
+    else:
+        # Create without sparse vectors for older versions
+        qdrant.create_collection(
+            collection_name=COLLECTION_NAME,
+            vectors_config=vectors_config
+        )
+    
     print(f"Created a new collection: {COLLECTION_NAME}")
 
 def upload_data_to_qdrant():
