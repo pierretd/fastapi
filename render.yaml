@@ -24,3 +24,7 @@ services:
         value: 384
       - key: BATCH_SIZE
         value: 100
+      - key: RENDER
+        value: "true"
+      - key: KEEPALIVE_INTERVAL
+        value: 240

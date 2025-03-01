@@ -42,7 +42,16 @@ KEEPALIVE_INTERVAL = int(os.getenv("KEEPALIVE_INTERVAL", "240"))  # 4 minutes in
 async def keepalive_task():
     """Background task that pings the health endpoint to keep the server alive."""
     # Get the API host from environment or default to localhost
-    api_host = os.getenv("API_HOST", "http://localhost:8000")
+    is_render = os.getenv("RENDER", "false").lower() == "true"
+    port = os.getenv("PORT", "8000")
+    
+    # If running on Render, use localhost with the correct port
+    if is_render:
+        # On Render, services are available internally at localhost with the assigned PORT
+        api_host = f"http://localhost:{port}"
+    else:
+        # For local development or other environments
+        api_host = os.getenv("API_HOST", f"http://localhost:{port}")
     
     # URL to ping (health endpoint)
     health_url = f"{api_host}/health"
