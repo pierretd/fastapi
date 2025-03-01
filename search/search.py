@@ -248,10 +248,9 @@ def search_games(query_text, limit=5, use_hybrid=True):
         search_results = qdrant.search(
             collection_name=COLLECTION_NAME,
             query_vector=("fast-bge-small-en-v1.5", vector),
-            limit=limit,
-            with_payload=True,
-            # Newer API supports timeout and other features
-            timeout=10.0  # 10 second timeout
+            limit=int(limit),  # Ensure limit is an integer
+            with_payload=True
+            # Removed timeout parameter as it was causing conversion issues
         )
         
         # Convert to dictionaries for consistent format
@@ -284,9 +283,9 @@ def get_game_recommendations(game_id, limit=5):
             collection_name=COLLECTION_NAME,
             positive=[game_id],
             using="fast-bge-small-en-v1.5",  # Specify which vector to use
-            limit=limit,
-            with_payload=True,
-            timeout=10.0  # Add timeout for better stability
+            limit=int(limit),  # Ensure limit is an integer
+            with_payload=True
+            # Removed timeout parameter as it was causing conversion issues
         )
         
         # Convert to dictionaries for consistent format

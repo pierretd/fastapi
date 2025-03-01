@@ -9,6 +9,10 @@ import uvicorn
 from dotenv import load_dotenv
 import time
 from datetime import timedelta
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+import httpx
 
 from search import (
     initialize_collection, 
@@ -21,6 +25,10 @@ from search import (
     get_game_by_id
 )
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Load environment variables
 load_dotenv()
 
@@ -28,13 +36,53 @@ load_dotenv()
 API_VERSION = os.getenv("API_VERSION", "1.0.0")
 ENABLE_RATE_LIMITING = os.getenv("ENABLE_RATE_LIMITING", "false").lower() == "true"
 DEFAULT_CACHE_DURATION = int(os.getenv("DEFAULT_CACHE_DURATION", "3600"))  # 1 hour in seconds
+KEEPALIVE_INTERVAL = int(os.getenv("KEEPALIVE_INTERVAL", "240"))  # 4 minutes in seconds (less than 5 min timeout)
 
+# Background task for keep-alive
+async def keepalive_task():
+    """Background task that pings the health endpoint to keep the server alive."""
+    # Get the API host from environment or default to localhost
+    api_host = os.getenv("API_HOST", "http://localhost:8000")
+    
+    # URL to ping (health endpoint)
+    health_url = f"{api_host}/health"
+    
+    while True:
+        try:
+            logger.info(f"Running keep-alive task, pinging {health_url}")
+            async with httpx.AsyncClient() as client:
+                response = await client.get(health_url)
+                logger.info(f"Keep-alive ping status: {response.status_code}")
+        except Exception as e:
+            logger.error(f"Keep-alive task failed: {str(e)}")
+        
+        # Sleep for the specified interval
+        await asyncio.sleep(KEEPALIVE_INTERVAL)
+
+# LifeSpan context to start background tasks
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start the keepalive task when the app starts
+    keepalive_task_obj = asyncio.create_task(keepalive_task())
+    logger.info("Started keep-alive background task")
+    
+    yield  # This is where the app runs
+    
+    # Cancel the task when the app is shutting down
+    keepalive_task_obj.cancel()
+    try:
+        await keepalive_task_obj
+    except asyncio.CancelledError:
+        logger.info("Keep-alive task cancelled")
+
+# Initialize FastAPI with lifespan
 app = FastAPI(
     title="Steam Games Search API",
     description="API for searching and recommending Steam games using vector embeddings",
     version=API_VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Add CORS middleware
@@ -233,6 +281,7 @@ async def search(request: SearchRequest, response: Response):
         current_page = (request.offset // page_size) + 1 if page_size > 0 else 1
         total_pages = (total_results + page_size - 1) // page_size if page_size > 0 else 1
         
+        # Create response object
         result = PaginatedResponse(
             items=response_items,
             total=total_results,
@@ -242,7 +291,10 @@ async def search(request: SearchRequest, response: Response):
         )
         
         # Add cache headers (short duration for search results)
-        return add_cache_headers(response, 300), result
+        add_cache_headers(response, 300)
+        
+        # Just return the result object
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -293,8 +345,9 @@ async def recommend(
             pages=total_pages
         )
         
-        # Add cache headers
-        return add_cache_headers(response, 3600), result
+        # Add cache headers (1 hour for recommendations)
+        add_cache_headers(response, 3600)
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -375,12 +428,13 @@ async def enhanced_recommend(request: EnhancedRecommendationRequest, response: R
             pages=total_pages
         )
         
-        # Add cache headers (short cache for personalized results)
-        return add_cache_headers(response, 300), result
+        # Add cache headers (short duration for enhanced recommendations)
+        add_cache_headers(response, 300)
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting enhanced recommendations: {str(e)}"
+            detail=str(e)
         )
 
 @app.post("/discover", response_model=PaginatedResponse, tags=["Discovery"])
@@ -426,12 +480,13 @@ async def discover(request: DiscoveryRequest, response: Response):
             pages=total_pages
         )
         
-        # Add cache headers (short cache for personalized results)
-        return add_cache_headers(response, 300), result
+        # Add cache headers (short duration for discovery results)
+        add_cache_headers(response, 300)
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting discovery recommendations: {str(e)}"
+            detail=str(e)
         )
 
 @app.post("/diverse-recommend", response_model=PaginatedResponse, tags=["Recommendations"])
@@ -477,12 +532,13 @@ async def diverse_recommend(request: DiverseRecommendationRequest, response: Res
             pages=total_pages
         )
         
-        # Add cache headers
-        return add_cache_headers(response, 1800), result
+        # Add cache headers (medium duration for diverse recommendations)
+        add_cache_headers(response, 1800)
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting diverse recommendations: {str(e)}"
+            detail=str(e)
         )
 
 @app.get("/random-games", response_model=List[RecommendationResponse], tags=["Discovery"])
@@ -506,8 +562,9 @@ async def random_games(limit: int = 9, response: Response = None):
                 )
             )
         
-        # Add cache headers (very short for random content)
-        return add_cache_headers(response, 60), response_items
+        # Add cache headers (short duration for random games)
+        add_cache_headers(response, 60)
+        return response_items
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -559,8 +616,9 @@ async def get_game_details(game_id: str, similar_limit: int = 5, response: Respo
             similar_games=similar_games_response
         )
         
-        # Add cache headers (game details can be cached longer)
-        return add_cache_headers(response, 86400), result  # 24 hours
+        # Add cache headers (day-long for game details)
+        add_cache_headers(response, 86400)  # 24 hours
+        return result
     except HTTPException:
         raise
     except Exception as e:
@@ -592,8 +650,9 @@ async def suggest(query: str, limit: int = 5, response: Response = None):
                 "score": result["score"]
             })
             
-        # Add cache headers (very short for suggestions)
-        return add_cache_headers(response, 60), suggestions
+        # Add cache headers (short duration for suggestions)
+        add_cache_headers(response, 60)
+        return suggestions
     except Exception as e:
         # For suggestions, we just return empty list on error
         return []
@@ -601,6 +660,5 @@ async def suggest(query: str, limit: int = 5, response: Response = None):
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
-if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
