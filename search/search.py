@@ -1,27 +1,13 @@
 import pandas as pd
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance
-
-# Handle version differences for sparse vector features
-try:
-    # Try to import sparse vector features (newer versions)
-    from qdrant_client.models import SparseVectorParams, SparseIndexParams, SparseVector
-    HAS_SPARSE_SUPPORT = True
-except ImportError:
-    # Fallback for older versions - define placeholder classes if needed
-    HAS_SPARSE_SUPPORT = False
-    class SparseVectorParams:
-        def __init__(self, *args, **kwargs):
-            pass
-    
-    class SparseIndexParams:
-        def __init__(self, *args, **kwargs):
-            pass
-    
-    class SparseVector:
-        def __init__(self, *args, **kwargs):
-            self.indices = []
-            self.values = []
+from qdrant_client.models import (
+    PointStruct, 
+    VectorParams, 
+    Distance, 
+    SparseVectorParams, 
+    SparseIndexParams, 
+    SparseVector
+)
 
 from fastembed import TextEmbedding
 import os
@@ -67,17 +53,7 @@ def get_fastembed_vector_params(self):
 
 def get_fastembed_sparse_vector_params(self):
     """Return SparseVectorParams for fastembed (monkey-patch for compatibility)"""
-    if HAS_SPARSE_SUPPORT:
-        try:
-            # Try using the class if it exists (newer versions)
-            return SparseVectorParams(index=SparseIndexParams())
-        except Exception:
-            # For older versions, return None which will skip sparse vectors
-            print("Warning: SparseVectorParams class exists but initialization failed")
-            return None
-    else:
-        print("Warning: Sparse vector support not available in this version of qdrant-client")
-        return None
+    return SparseVectorParams(index=SparseIndexParams())
 
 def add(self, collection_name, documents, metadata, ids):
     """
@@ -174,19 +150,12 @@ def create_collection():
     sparse_vectors_config = qdrant.get_fastembed_sparse_vector_params()
     
     # Create the collection with proper configuration
-    if sparse_vectors_config is not None:
-        # Create with sparse vectors if supported
-        qdrant.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=vectors_config,
-            sparse_vectors_config=sparse_vectors_config
-        )
-    else:
-        # Create without sparse vectors for older versions
-        qdrant.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=vectors_config
-        )
+    # With latest qdrant-client, we can always use sparse vectors
+    qdrant.create_collection(
+        collection_name=COLLECTION_NAME,
+        vectors_config=vectors_config,
+        sparse_vectors_config=sparse_vectors_config
+    )
     
     print(f"Created a new collection: {COLLECTION_NAME}")
 
@@ -271,36 +240,26 @@ def search_games(query_text, limit=5, use_hybrid=True):
         list: Search results as dictionaries with id, payload, and score
     """
     try:
-        if use_hybrid:
-            # Generate embedding
-            embeddings = list(embedder.embed([query_text]))
-            vector = embeddings[0].tolist() if embeddings else []
-            
-            # Search with proper vector field name
-            search_results = qdrant.search(
-                collection_name=COLLECTION_NAME,
-                query_vector=("fast-bge-small-en-v1.5", vector),
-                limit=limit,
-                with_payload=True
-            )
-        else:
-            # For non-hybrid, similar approach but with explicit field
-            embeddings = list(embedder.embed([query_text]))
-            vector = embeddings[0].tolist() if embeddings else []
-            
-            search_results = qdrant.search(
-                collection_name=COLLECTION_NAME,
-                query_vector=("fast-bge-small-en-v1.5", vector),
-                limit=limit,
-                with_payload=True
-            )
+        # Generate embedding
+        embeddings = list(embedder.embed([query_text]))
+        vector = embeddings[0].tolist() if embeddings else []
+        
+        # With latest qdrant-client, we can use named vectors directly
+        search_results = qdrant.search(
+            collection_name=COLLECTION_NAME,
+            query_vector=("fast-bge-small-en-v1.5", vector),
+            limit=limit,
+            with_payload=True,
+            # Newer API supports timeout and other features
+            timeout=10.0  # 10 second timeout
+        )
         
         # Convert to dictionaries for consistent format
         results = []
         for point in search_results:
             results.append({
                 "id": str(point.id),
-                "payload": point.payload if hasattr(point, 'payload') else {},
+                "payload": point.payload,  # Latest version always has payload
                 "score": point.score
             })
         
@@ -326,7 +285,8 @@ def get_game_recommendations(game_id, limit=5):
             positive=[game_id],
             using="fast-bge-small-en-v1.5",  # Specify which vector to use
             limit=limit,
-            with_payload=True
+            with_payload=True,
+            timeout=10.0  # Add timeout for better stability
         )
         
         # Convert to dictionaries for consistent format
@@ -334,7 +294,7 @@ def get_game_recommendations(game_id, limit=5):
         for point in recommend_results:
             results.append({
                 "id": str(point.id),
-                "payload": point.payload if hasattr(point, 'payload') else {},
+                "payload": point.payload,  # Latest version always has payload
                 "score": point.score
             })
         
