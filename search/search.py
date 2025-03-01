@@ -279,6 +279,27 @@ def get_game_recommendations(game_id, limit=5):
         list: Recommended games as dictionaries with id, payload, and score
     """
     try:
+        # Convert game_id to integer if it's a string
+        if isinstance(game_id, str):
+            game_id = int(game_id)
+        
+        print(f"Getting recommendations for game ID: {game_id}, limit: {limit}")
+        
+        # Check if the game exists in the collection
+        try:
+            game_exists = qdrant.retrieve(
+                collection_name=COLLECTION_NAME,
+                ids=[game_id],
+                with_payload=False
+            )
+            if not game_exists:
+                print(f"Game with ID {game_id} not found in collection")
+                return []
+        except Exception as e:
+            print(f"Error checking if game exists: {e}")
+            # Continue anyway, as the recommend function will handle non-existent IDs
+        
+        # Try to get recommendations
         recommend_results = qdrant.recommend(
             collection_name=COLLECTION_NAME,
             positive=[game_id],
@@ -287,6 +308,8 @@ def get_game_recommendations(game_id, limit=5):
             with_payload=True
             # Removed timeout parameter as it was causing conversion issues
         )
+        
+        print(f"Got {len(recommend_results)} recommendations")
         
         # Convert to dictionaries for consistent format
         results = []
