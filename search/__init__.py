@@ -1,3 +1,10 @@
+import sys
+import os
+# Get the parent directory
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, parent_dir)
+
+# Import directly from the search.py file
 from .search import (
     initialize_collection,
     search_games,
