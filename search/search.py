@@ -190,6 +190,14 @@ def upload_data_to_qdrant():
         embedding_text = create_embedding_text({**row, **desc})
         documents.append(embedding_text)
         
+        # Ensure short_description is the actual description from Steam
+        # and not just a generic summary of genres/etc.
+        short_description = desc["short_description"]
+        if not short_description or len(short_description) < 50:
+            # If Steam API didn't provide a good description, use what we have in the CSV
+            # but format it better
+            short_description = f"{row['name']} - {row.get('tags', '')}"
+        
         metadata.append({
             "name": row["name"],
             "steam_appid": app_id,
@@ -199,7 +207,7 @@ def upload_data_to_qdrant():
             "release_date": row.get("release_date", ""),
             "developers": row.get("developers", ""),
             "platforms": row.get("platforms", ""),
-            "short_description": desc["short_description"],
+            "short_description": short_description,
             "detailed_description": desc["detailed_description"][:1000],
         })
         
@@ -581,50 +589,192 @@ def get_game_by_id(game_id: str) -> Optional[Dict]:
     try:
         # Convert to string to ensure proper ID format
         str_id = str(game_id)
+        int_id = int(str_id)  # Also try as integer
         
-        # First try direct retrieval by ID
-        result = qdrant.retrieve(
-            collection_name=COLLECTION_NAME,
-            ids=[str_id],
-            with_payload=True,
-            with_vectors=False
-        )
+        # Print debug info
+        print(f"Attempting to retrieve game with ID: {str_id} (type: {type(str_id)})")
         
-        # Check if we got a result
-        if result and len(result) > 0:
-            point = result[0]
-            return {
-                "id": str(point.id),
-                "score": 1.0,
-                "payload": point.payload
-            }
+        # First try direct retrieval by ID as integer
+        try:
+            result = qdrant.retrieve(
+                collection_name=COLLECTION_NAME,
+                ids=[int_id],
+                with_payload=True,
+                with_vectors=False
+            )
+            
+            # Check if we got a result
+            if result and len(result) > 0:
+                point = result[0]
+                game_data = {
+                    "id": str(point.id),
+                    "score": 1.0,
+                    "payload": point.payload
+                }
+                
+                # Check if the short_description appears to be low quality
+                # (e.g., just repeating the game's genres or being too short)
+                short_desc = game_data["payload"].get("short_description", "")
+                game_name = game_data["payload"].get("name", "")
+                
+                if (short_desc.startswith(f"{game_name} is a") or 
+                    short_desc.startswith("A ") or 
+                    len(short_desc) < 50):
+                    
+                    print(f"Found low-quality description for game {str_id}, fetching better one from Steam API")
+                    try:
+                        steam_data = get_steam_game_description(str_id)
+                        if steam_data and steam_data['short_description']:
+                            # Replace with better description from Steam
+                            game_data["payload"]["short_description"] = steam_data['short_description']
+                            if steam_data['detailed_description']:
+                                game_data["payload"]["detailed_description"] = steam_data['detailed_description'][:1000]
+                    except Exception as e:
+                        print(f"Error fetching better description from Steam: {e}")
+                
+                return game_data
+        except Exception as e:
+            print(f"Error retrieving by integer ID {int_id}: {e}")
+            
+        # Try with string ID
+        try:
+            result = qdrant.retrieve(
+                collection_name=COLLECTION_NAME,
+                ids=[str_id],
+                with_payload=True,
+                with_vectors=False
+            )
+            
+            # Check if we got a result
+            if result and len(result) > 0:
+                point = result[0]
+                game_data = {
+                    "id": str(point.id),
+                    "score": 1.0,
+                    "payload": point.payload
+                }
+                
+                # Check if the short_description appears to be low quality
+                # (e.g., just repeating the game's genres or being too short)
+                short_desc = game_data["payload"].get("short_description", "")
+                game_name = game_data["payload"].get("name", "")
+                
+                if (short_desc.startswith(f"{game_name} is a") or 
+                    short_desc.startswith("A ") or 
+                    len(short_desc) < 50):
+                    
+                    print(f"Found low-quality description for game {str_id}, fetching better one from Steam API")
+                    try:
+                        steam_data = get_steam_game_description(str_id)
+                        if steam_data and steam_data['short_description']:
+                            # Replace with better description from Steam
+                            game_data["payload"]["short_description"] = steam_data['short_description']
+                            if steam_data['detailed_description']:
+                                game_data["payload"]["detailed_description"] = steam_data['detailed_description'][:1000]
+                    except Exception as e:
+                        print(f"Error fetching better description from Steam: {e}")
+                
+                return game_data
+        except Exception as e:
+            print(f"Error retrieving by string ID {str_id}: {e}")
         
         # If direct retrieval failed, try searching by filter
-        results = qdrant.scroll(
-            collection_name=COLLECTION_NAME,
-            filter={
-                "must": [
-                    {"key": "id", "match": {"value": str_id}}
-                ]
-            },
-            limit=1,
-            with_payload=True,
-            with_vectors=False
-        )
+        try:
+            # Try with steam_appid field
+            results = qdrant.scroll(
+                collection_name=COLLECTION_NAME,
+                filter={
+                    "must": [
+                        {"key": "steam_appid", "match": {"value": int_id}}
+                    ]
+                },
+                limit=1,
+                with_payload=True,
+                with_vectors=False
+            )
+            
+            # Check if we got a result from filter search
+            points, _ = results
+            if points and len(points) > 0:
+                point = points[0]
+                game_data = {
+                    "id": str(point.id),
+                    "score": 1.0,
+                    "payload": point.payload
+                }
+                
+                # Check if the short_description appears to be low quality
+                # (e.g., just repeating the game's genres or being too short)
+                short_desc = game_data["payload"].get("short_description", "")
+                game_name = game_data["payload"].get("name", "")
+                
+                if (short_desc.startswith(f"{game_name} is a") or 
+                    short_desc.startswith("A ") or 
+                    len(short_desc) < 50):
+                    
+                    print(f"Found low-quality description for game {str_id}, fetching better one from Steam API")
+                    try:
+                        steam_data = get_steam_game_description(str_id)
+                        if steam_data and steam_data['short_description']:
+                            # Replace with better description from Steam
+                            game_data["payload"]["short_description"] = steam_data['short_description']
+                            if steam_data['detailed_description']:
+                                game_data["payload"]["detailed_description"] = steam_data['detailed_description'][:1000]
+                    except Exception as e:
+                        print(f"Error fetching better description from Steam: {e}")
+                
+                return game_data
+        except Exception as e:
+            print(f"Error searching by steam_appid filter: {e}")
+            
+        # If we still haven't found the game, try fetching it directly from Steam
+        try:
+            # Get the game description from Steam API
+            steam_data = get_steam_game_description(str_id)
+            
+            if steam_data and (steam_data['short_description'] or steam_data['detailed_description']):
+                print(f"Found game {str_id} in Steam API but not in database")
+                
+                # Fetch additional details from Steam API
+                try:
+                    url = f"https://store.steampowered.com/api/appdetails?appids={str_id}"
+                    response = requests.get(url)
+                    steam_details = {}
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get(str_id, {}).get('success'):
+                            steam_details = data[str_id]['data']
+                except Exception as e:
+                    print(f"Error fetching additional game details: {e}")
+                
+                # Make a game object with the data we have
+                return {
+                    "id": str_id,
+                    "score": 1.0,
+                    "payload": {
+                        "name": steam_details.get('name', f"Game {str_id}"),
+                        "steam_appid": int_id,
+                        "price": float(steam_details.get('price_overview', {}).get('final', 0)) / 100 if 'price_overview' in steam_details else 0.0,
+                        "genres": ",".join([g.get('description', '') for g in steam_details.get('genres', [])]),
+                        "tags": ",".join([g.get('description', '') for g in steam_details.get('categories', [])]),
+                        "release_date": steam_details.get('release_date', {}).get('date', ''),
+                        "developers": ",".join(steam_details.get('developers', [])),
+                        "platforms": ",".join([p for p, is_supported in steam_details.get('platforms', {}).items() if is_supported]),
+                        "short_description": steam_data['short_description'],
+                        "detailed_description": steam_data['detailed_description']
+                    }
+                }
+        except Exception as e:
+            print(f"Error fetching from Steam API: {e}")
         
-        # Check if we got a result from filter search
-        points, _ = results
-        if points and len(points) > 0:
-            point = points[0]
-            return {
-                "id": str(point.id),
-                "score": 1.0,
-                "payload": point.payload
-            }
-        
+        print(f"Game with ID {str_id} not found in database or Steam API")
         return None
     except Exception as e:
         print(f"Error getting game by ID {game_id}: {e}")
+        # Print the full exception traceback for debugging
+        import traceback
+        traceback.print_exc()
         return None
 
 def test_search():

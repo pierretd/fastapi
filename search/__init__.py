@@ -13,5 +13,6 @@ from .search import (
     get_discovery_recommendations,
     get_diverse_recommendations,
     get_random_games,
-    get_game_by_id
+    get_game_by_id,
+    get_steam_game_description
 ) 
