@@ -106,3 +106,28 @@ venv.bak/
 
 # Mac OS
 .DS_Store
+
+# Project specific
+.embeddings_cache/
+*.csv
+test_output/
+
+# Qdrant local data (if applicable)
+qdrant_data/
+
+# Additional environment files
+.env*
+!.env.example
+
+# IDE files
+.vscode/
+.idea/
+
+# Additional temporary files
+*.swp
+*.swo
+.~*
+
+# Debug files
+debug/
+debug.log
