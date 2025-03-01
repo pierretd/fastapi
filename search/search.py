@@ -562,13 +562,13 @@ def get_random_games(limit: int = 10) -> List[Dict]:
         # The scroll method returns a tuple of (points, next_page_offset)
         points, _ = results
         
-        # Format the results to match our standard return format
+        # Format the results to match our standard return format without any transformations
         formatted_results = []
         for point in points:
             formatted_results.append({
                 "id": str(point.id),
                 "score": 1.0,  # Assign a score of 1.0 for random retrieval
-                "payload": point.payload
+                "payload": point.payload  # Return the payload exactly as it exists in Qdrant
             })
         
         return formatted_results
