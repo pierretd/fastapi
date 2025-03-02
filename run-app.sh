@@ -2,87 +2,61 @@
 
 # Simple script to run both the backend and frontend
 
-# Function to check if a command exists
-command_exists() {
-  command -v "$1" >/dev/null 2>&1
-}
-
-# Function to cleanup processes on exit
+# Function to kill processes on exit
 cleanup() {
-  echo "Cleaning up processes..."
-  
-  if [ -f "server_pid.txt" ]; then
-    SERVER_PID=$(cat server_pid.txt)
-    if [ ! -z "$SERVER_PID" ]; then
-      echo "Stopping backend server (PID: $SERVER_PID)..."
-      kill -9 $SERVER_PID 2>/dev/null
-      rm server_pid.txt
-    fi
+  echo "Stopping all processes..."
+  if [ -f server_pid.txt ]; then
+    kill $(cat server_pid.txt) 2>/dev/null
+    rm server_pid.txt
   fi
-  
-  if [ -f "frontend/frontend_pid.txt" ]; then
-    FRONTEND_PID=$(cat frontend/frontend_pid.txt)
-    if [ ! -z "$FRONTEND_PID" ]; then
-      echo "Stopping frontend server (PID: $FRONTEND_PID)..."
-      kill -9 $FRONTEND_PID 2>/dev/null
-      rm frontend/frontend_pid.txt
-    fi
+  if [ -f frontend_pid.txt ]; then
+    kill $(cat frontend_pid.txt) 2>/dev/null
+    rm frontend_pid.txt
   fi
-  
-  echo "Cleanup complete"
   exit 0
 }
 
-# Set up trap for cleanup on script exit
-trap cleanup EXIT INT TERM
+# Set up trap to catch signals
+trap cleanup SIGINT SIGTERM
 
-# Check if Python is installed
-if ! command_exists python3 && ! command_exists python; then
-  echo "Error: Python is not installed. Please install Python 3.8 or higher."
-  exit 1
+# Check if Python virtual environment exists
+if [ ! -d "venv" ]; then
+  echo "Creating Python virtual environment..."
+  python -m venv venv
 fi
 
-# Check if Node.js is installed
-if ! command_exists node; then
-  echo "Error: Node.js is not installed. Please install Node.js 14 or higher."
-  exit 1
-fi
+# Activate virtual environment
+source venv/bin/activate
 
-# Check if npm is installed
-if ! command_exists npm; then
-  echo "Error: npm is not installed. Please install npm."
-  exit 1
-fi
+# Install Python dependencies
+echo "Installing Python dependencies..."
+pip install -r requirements.txt
 
-# Start backend server
+# Start the backend server
 echo "Starting backend server..."
-if command_exists python3; then
-  python3 main.py > server_stdout.log 2>&1 &
-else
-  python main.py > server_stdout.log 2>&1 &
-fi
+python main.py > server_stdout.log 2>&1 &
 echo $! > server_pid.txt
-echo "Backend server started with PID: $(cat server_pid.txt)"
+echo "Backend server started (PID: $(cat server_pid.txt))"
 
-# Wait for backend to initialize
-echo "Waiting for backend to initialize..."
-sleep 5
-
-# Start frontend server
-echo "Starting frontend server..."
+# Change to frontend directory
 cd frontend
-npm run dev > frontend_stdout.log 2>&1 &
-echo $! > frontend_pid.txt
-echo "Frontend server started with PID: $(cat frontend_pid.txt)"
-cd ..
+
+# Install frontend dependencies if needed
+if [ ! -d "node_modules" ]; then
+  echo "Installing frontend dependencies..."
+  npm install
+fi
+
+# Start the frontend
+echo "Starting frontend..."
+npm run dev > ../frontend_stdout.log 2>&1 &
+echo $! > ../frontend_pid.txt
+echo "Frontend started (PID: $(cat ../frontend_pid.txt))"
 
 echo "Application is running!"
 echo "- Backend: http://localhost:8000"
 echo "- Frontend: http://localhost:3000"
-echo ""
-echo "Press Ctrl+C to stop the application"
+echo "Press Ctrl+C to stop all services"
 
-# Keep the script running
-while true; do
-  sleep 1
-done 
+# Wait for user to press Ctrl+C
+wait 

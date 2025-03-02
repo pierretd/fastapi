@@ -4,7 +4,7 @@ import sys
 import pandas as pd
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, SparseVectorParams, SparseIndexParams, PointStruct, SparseVector, Filter
+from qdrant_client.models import Distance, VectorParams, SparseVectorParams, SparseIndexParams, PointStruct, SparseVector
 from fastembed import TextEmbedding
 from fastembed.sparse import SparseTextEmbedding  # Added for sparse embeddings
 import numpy as np
@@ -15,7 +15,6 @@ import re
 from bs4 import BeautifulSoup
 from functools import lru_cache
 import logging
-from typing import List, Dict, Any
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -215,119 +214,152 @@ def format_game_text(row):
     
     return ". ".join(part for part in parts if part.strip())
 
-def upload_data():
-    """Upload data from CSV to Qdrant with enriched information and hybrid vectors"""
-    try:
-        # Load CSV file
-        print(f"Loading data from {CSV_FILE}...")
-        df = pd.read_csv(CSV_FILE)
-        print(f"Loaded {len(df)} games from CSV.")
+def create_embedding_text(row):
+    """
+    Create a text representation for embedding a game.
+    
+    Args:
+        row: Pandas DataFrame row representing a game
         
-        # Process data in batches
-        total_batches = (len(df) + BATCH_SIZE - 1) // BATCH_SIZE
-        points_uploaded = 0
+    Returns:
+        str: Text to be embedded
+    """
+    name = row.get('name', '')
+    genres = row.get('genres', '')
+    tags = row.get('tags', '')
+    description = row.get('short_description', '')
+    
+    embedding_text = f"Game: {name}. "
+    
+    if genres:
+        embedding_text += f"Genres: {genres}. "
+    
+    if tags:
+        embedding_text += f"Tags: {tags}. "
+    
+    if description:
+        embedding_text += f"Description: {description}"
+    
+    return embedding_text
+
+def process_data(df):
+    """
+    Process the DataFrame to clean data and prepare for embedding.
+    
+    Args:
+        df: Pandas DataFrame of game data
         
-        for batch_start in tqdm(range(0, len(df), BATCH_SIZE), total=total_batches, desc="Uploading batches"):
-            batch_end = min(batch_start + BATCH_SIZE, len(df))
-            batch_df = df.iloc[batch_start:batch_end]
-            
-            # Prepare batch points
-            batch_points = []
-            texts = []
-            enriched_rows = []
-            
-            # First, enrich data for each game in the batch
-            print(f"Enriching data for batch {batch_start//BATCH_SIZE + 1}/{total_batches}...")
-            for _, row in batch_df.iterrows():
-                # Create a dictionary of the row data
-                row_dict = row.to_dict()
-                
-                # Get the Steam App ID
-                app_id = row_dict.get('steam_appid', 0)
-                if app_id:
-                    # Fetch additional data from Steam API
-                    steam_data = get_steam_game_details(app_id)
-                    if steam_data:
-                        # Merge Steam data with our existing data
-                        row_dict.update(steam_data)
-                        
-                        # Calculate review sentiment
-                        if row_dict.get('total_reviews', 0) == 0:
-                            row_dict['review_sentiment'] = 'no_reviews'
-                        elif row_dict.get('total_reviews', 0) < 10:
-                            row_dict['review_sentiment'] = 'few_reviews'
-                        else:
-                            # We would need positive/negative counts to calculate actual sentiment
-                            # For now assign a placeholder
-                            row_dict['review_sentiment'] = 'mixed'
-                
-                # Add URL field
-                game_name = row_dict.get('name', '')
-                if game_name:
-                    game_slug = game_name.lower().replace(' ', '-').replace(':', '').replace('\'', '')
-                    game_slug = re.sub(r'[^a-z0-9-]', '', game_slug)
-                    row_dict['url'] = f"/games/{game_slug}"
-                
-                # Add the enriched row data
-                enriched_rows.append(row_dict)
-                
-                # Format game text for embedding
-                game_text = format_game_text(row_dict)
-                texts.append(game_text)
-            
-            # Generate dense embeddings for the batch
-            print(f"Generating dense embeddings for batch {batch_start//BATCH_SIZE + 1}/{total_batches}...")
-            dense_embeddings = list(dense_embedder.embed(texts))
-            
-            # Generate sparse embeddings for the batch
-            print(f"Generating sparse embeddings for batch {batch_start//BATCH_SIZE + 1}/{total_batches}...")
-            sparse_embeddings = list(sparse_embedder.embed(texts))
-            
-            # Create points with named vectors
-            for i, row_dict in enumerate(enriched_rows):
-                game_id = int(row_dict.get('steam_appid', 0)) if 'steam_appid' in row_dict else i + batch_start
-                
-                # Get the sparse vector in the correct format
-                sparse_vector = sparse_embeddings[i]
-                sparse_indices = sparse_vector.indices.tolist()
-                sparse_values = sparse_vector.values.tolist()
-                
-                # Create the sparse vector object
-                sparse_vec = SparseVector(
-                    indices=sparse_indices,
-                    values=sparse_values
-                )
-                
-                # Create point with named vectors
-                point = PointStruct(
-                    id=game_id,
-                    vectors={
-                        "fast-bge-small-en-v1.5": dense_embeddings[i].tolist()
-                    },
-                    sparse_vectors={
-                        "fast-sparse-splade_pp_en_v1": sparse_vec
-                    },
-                    payload=row_dict
-                )
-                batch_points.append(point)
-            
-            # Upload batch
-            client.upsert(
-                collection_name=COLLECTION_NAME,
-                points=batch_points
+    Returns:
+        Processed DataFrame
+    """
+    # Convert steam_appid to string (required for Qdrant IDs)
+    if 'steam_appid' in df.columns:
+        df['steam_appid'] = df['steam_appid'].astype(str)
+    
+    # Filter out rows with missing essential data
+    if 'name' in df.columns:
+        df = df[df['name'].notna()]
+    
+    return df
+
+def upload_data(csv_file=CSV_FILE, force_recreate=False, collection_name=COLLECTION_NAME):
+    """
+    Load game data from CSV and upload to Qdrant.
+    
+    Args:
+        csv_file: Path to CSV file with game data
+        force_recreate: Whether to recreate the collection if it exists
+        collection_name: Name of the collection to create or update
+        
+    Returns:
+        Number of games uploaded
+    """
+    start_time = time.time()
+    
+    # Check if collection exists
+    collections = client.get_collections().collections
+    collection_names = [collection.name for collection in collections]
+    
+    # Create or recreate collection if needed
+    if collection_name in collection_names:
+        if force_recreate:
+            logger.info(f"Recreating collection {collection_name}")
+            client.delete_collection(collection_name=collection_name)
+            client.create_collection(
+                collection_name=collection_name,
+                vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
             )
-            
-            points_uploaded += len(batch_points)
-            print(f"Uploaded batch {batch_start//BATCH_SIZE + 1}/{total_batches} - Total points: {points_uploaded}")
-            
-            # Small delay to avoid overwhelming Qdrant
-            time.sleep(0.5)
+        else:
+            logger.info(f"Collection {collection_name} already exists, using existing collection")
+    else:
+        logger.info(f"Creating collection {collection_name}")
+        client.create_collection(
+            collection_name=collection_name,
+            vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+        )
+    
+    # Load and process data
+    logger.info(f"Loading data from {csv_file}")
+    df = pd.read_csv(csv_file)
+    df = process_data(df)
+    
+    total_games = len(df)
+    logger.info(f"Loaded {total_games} games from CSV")
+    
+    # Create embeddings and upload in batches
+    points = []
+    
+    for i, row in tqdm(df.iterrows(), total=len(df), desc="Creating embeddings"):
+        game_id = str(row['steam_appid'])
         
-        print(f"Successfully uploaded {points_uploaded} games to collection '{COLLECTION_NAME}'.")
-        return True
-    except Exception as e:
-        print(f"Error uploading data: {str(e)}")
-        return False
+        # Create text for embedding
+        embedding_text = create_embedding_text(row)
+        
+        # Create embedding
+        embedding = list(dense_embedder.embed(embedding_text))[0]
+        
+        # Prepare payload
+        payload = {
+            'name': row.get('name', ''),
+            'steam_appid': game_id,
+            'price': row.get('price', 0),
+            'genres': row.get('genres', ''),
+            'tags': row.get('tags', ''),
+            'release_date': row.get('release_date', ''),
+            'developers': row.get('developers', ''),
+            'platforms': row.get('platforms', ''),
+            'short_description': row.get('short_description', ''),
+            'detailed_description': row.get('detailed_description', '')
+        }
+        
+        # Add point to batch
+        points.append(PointStruct(
+            id=game_id,
+            vector=embedding,
+            payload=payload
+        ))
+        
+        # Upload batch if it reaches BATCH_SIZE
+        if len(points) >= BATCH_SIZE:
+            client.upsert(
+                collection_name=collection_name,
+                points=points
+            )
+            logger.info(f"Uploaded batch of {len(points)} games")
+            points = []
+    
+    # Upload any remaining points
+    if points:
+        client.upsert(
+            collection_name=collection_name,
+            points=points
+        )
+        logger.info(f"Uploaded final batch of {len(points)} games")
+    
+    elapsed_time = time.time() - start_time
+    logger.info(f"Uploaded {total_games} games in {elapsed_time:.2f} seconds")
+    
+    return total_games
 
 def test_collection():
     """Test the collection by doing a hybrid search"""
@@ -415,4 +447,13 @@ def main():
     print("========== Finished ==========")
 
 if __name__ == "__main__":
-    main() 
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Upload game data to Qdrant')
+    parser.add_argument('--csv', type=str, default=CSV_FILE, help='Path to CSV file with game data')
+    parser.add_argument('--force-recreate', action='store_true', help='Force recreation of collection if it exists')
+    parser.add_argument('--collection', type=str, default=COLLECTION_NAME, help='Name of the collection to create or update')
+    
+    args = parser.parse_args()
+    
+    upload_data(csv_file=args.csv, force_recreate=args.force_recreate, collection_name=args.collection) 

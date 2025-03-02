@@ -1,18 +1,20 @@
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, Query, HTTPException, Depends
+from fastapi import FastAPI, Query, HTTPException, Depends, Request, status, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exception_handlers import http_exception_handler
 from pydantic import BaseModel, Field
 import os
 import uvicorn
 from dotenv import load_dotenv
+import time
 import logging
 from contextlib import asynccontextmanager
 
 from search import (
-    initialize_collection,
+    initialize_collection, 
+    search_games, 
     get_game_by_id,
-    get_discovery_games,
     get_discovery_context
 )
 
@@ -24,127 +26,145 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # API configuration
-PORT = int(os.getenv("PORT", "8000"))
-HOST = os.getenv("HOST", "0.0.0.0")
+API_VERSION = os.getenv("API_VERSION", "1.0.0")
+DEFAULT_CACHE_DURATION = int(os.getenv("DEFAULT_CACHE_DURATION", "3600"))  # 1 hour in seconds
+IS_RENDER = os.getenv("RENDER", "false").lower() == "true"
 
-# Lifespan context manager for startup/shutdown events
+# Define our startup and shutdown events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Initialize the collection
-    await initialize_collection()
+    # Startup: Initialize the vector search collection
+    logger.info("Starting up Steam Games Search API...")
+    try:
+        initialize_collection()
+        logger.info("Collection initialized and ready")
+    except Exception as e:
+        logger.error(f"Failed to initialize collection: {e}")
+        logger.info("Continuing startup despite initialization error")
     yield
-    # Shutdown: No special cleanup needed
+    # Shutdown: Any cleanup code would go here
+    logger.info("Shutting down Steam Games Search API...")
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Simplified Game Discovery API",
-    description="A minimal API for game discovery and details",
-    version="1.0.0",
+    title="Steam Games Search API",
+    description="API for searching and discovering Steam games using vector search",
+    version=API_VERSION,
     lifespan=lifespan
 )
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=["*"],  # Allow all origins in this simplified version
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Pydantic models
-class DiscoveryRequest(BaseModel):
-    positive_ids: Optional[List[str]] = Field(default=[], description="List of game IDs the user likes")
-    negative_ids: Optional[List[str]] = Field(default=[], description="List of game IDs the user dislikes")
-    excluded_ids: Optional[List[str]] = Field(default=[], description="List of game IDs to exclude from results")
-    limit: Optional[int] = Field(default=9, description="Maximum number of results to return")
+# Custom response headers middleware
+@app.middleware("http")
+async def add_cache_control_header(request: Request, call_next):
+    response = await call_next(request)
+    
+    # Add cache control headers (except for admin endpoints)
+    if not request.url.path.startswith("/admin"):
+        response.headers["Cache-Control"] = f"public, max-age={DEFAULT_CACHE_DURATION}"
+    
+    return response
 
-# Routes
+# Define request/response models
+class SearchRequest(BaseModel):
+    query: str
+    limit: int = Field(10, ge=1, le=100)
+    offset: int = Field(0, ge=0)
+
+class GameSearchResponse(BaseModel):
+    id: str
+    score: float
+    payload: Dict[str, Any]
+
+# Exception handler for all exceptions
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "An unexpected error occurred. Please try again later."}
+    )
+
+# Root endpoint
 @app.get("/")
 async def root():
-    """Root endpoint providing basic API information."""
+    """Root endpoint providing API information."""
     return {
-        "message": "Simplified Game Discovery API",
+        "message": "Steam Games Search API",
+        "version": API_VERSION,
+        "environment": "Render" if IS_RENDER else "Development",
         "endpoints": [
-            "/game/{game_id}",
-            "/discovery-games",
-            "/discovery-context/{game_id}"
+            "/search - Search for games",
+            "/game/{game_id} - Get game details",
+            "/discovery-context/{game_id} - Get similar games"
         ]
     }
 
+# Health check endpoint (important for Render)
 @app.get("/health")
 async def health_check():
     """Health check endpoint for monitoring."""
     return {"status": "ok"}
 
-@app.get("/game/{game_id}")
+# Search endpoint
+@app.post("/search", response_model=List[GameSearchResponse])
+async def search(request: SearchRequest):
+    """
+    Search for games using a text query.
+    Returns a list of games matching the search criteria.
+    """
+    try:
+        results = search_games(request.query, limit=request.limit, offset=request.offset)
+        return results
+    except Exception as e:
+        logger.error(f"Search error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
+# Game details endpoint
+@app.get("/game/{game_id}", response_model=Dict[str, Any])
 async def get_game(game_id: str):
     """
     Get detailed information about a specific game by ID.
-    
-    Args:
-        game_id: The unique identifier of the game
-        
-    Returns:
-        Game details or 404 if not found
-    """
-    game = get_game_by_id(game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail=f"Game with ID {game_id} not found")
-    return game
-
-@app.post("/discovery-games")
-async def discovery_games(request: DiscoveryRequest):
-    """
-    Get personalized game recommendations based on likes/dislikes.
-    
-    Args:
-        request: The discovery request containing positive and negative IDs
-        
-    Returns:
-        List of recommended games
     """
     try:
-        games = get_discovery_games(
-            positive_ids=request.positive_ids,
-            negative_ids=request.negative_ids,
-            excluded_ids=request.excluded_ids,
-            limit=request.limit
-        )
-        return games
+        game = get_game_by_id(game_id)
+        if not game:
+            raise HTTPException(status_code=404, detail=f"Game with ID {game_id} not found")
+        return game
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error in discovery games: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting game details: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error retrieving game details: {str(e)}")
 
-@app.get("/discovery-context/{game_id}")
-async def discovery_context(
+# Similar games endpoint (for game detail page)
+@app.get("/discovery-context/{game_id}", response_model=List[GameSearchResponse])
+async def get_similar_games(
     game_id: str,
-    limit: int = 9,
-    excluded_ids: str = ""
+    limit: int = Query(9, ge=1, le=100),
+    excluded_ids: str = Query("", description="Comma-separated list of IDs to exclude")
 ):
     """
     Get games similar to a specific game.
-    
-    Args:
-        game_id: ID of the game to find similar games for
-        limit: Maximum number of results to return
-        excluded_ids: Comma-separated list of game IDs to exclude
-        
-    Returns:
-        List of similar games
     """
-    excluded = excluded_ids.split(",") if excluded_ids else []
     try:
-        games = get_discovery_context(
-            game_id=game_id,
-            limit=limit,
-            excluded_ids=excluded
-        )
-        return games
+        excluded = excluded_ids.split(",") if excluded_ids else []
+        results = get_discovery_context(game_id, limit=limit, excluded_ids=excluded)
+        return results
     except Exception as e:
-        logger.error(f"Error in discovery context: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting similar games: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error retrieving similar games: {str(e)}")
 
-# Run the application
+# Run the application (only in development)
 if __name__ == "__main__":
-    uvicorn.run("main:app", host=HOST, port=PORT, reload=True)
+    port = int(os.getenv("PORT", 8000))
+    logger.info(f"Starting server on port {port}")
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)

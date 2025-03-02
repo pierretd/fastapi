@@ -1,30 +1,56 @@
-# Simplified Game Discovery
+# Game Discovery API
 
-A streamlined game discovery application focused on finding new games based on your preferences. This application provides a simple interface for discovering games through personalized recommendations.
+A simplified API for game discovery using dense vector search. This application provides a streamlined experience focused on efficient discovery of games through semantic similarity.
 
 ## Features
 
-- **Discovery Interface**: Get game recommendations based on your likes and dislikes
-- **Game Details**: View detailed information about any game
-- **Similar Games**: Find games similar to ones you're interested in
+- **Dense Vector Search**: Find games using semantic search through vector embeddings
+- **Discovery**: Get personalized game recommendations based on user preferences
+- **Context-based Discovery**: Find similar games based on a specific game
 
 ## Architecture
 
 This application uses:
 
-- **Backend**: 
-  - FastAPI for the API server
-  - Qdrant for vector search
-  - FastEmbed for semantic embeddings
+- **FastAPI**: Modern, fast web framework for building APIs
+- **Qdrant**: Vector database for storing and searching game embeddings
+- **FastEmbed**: Embedding model library for creating dense vector representations
 
-- **Frontend**:
-  - Next.js for the user interface
-  - React for component-based UI
-  - TailwindCSS for styling
+## API Endpoints
+
+### Search
+
+- `GET /search`: Search for games using a text query
+  - Parameters: 
+    - `query`: Search term or game ID
+    - `limit`: Maximum number of results to return
+
+### Game Details
+
+- `GET /game/{game_id}`: Get detailed information about a specific game
+  - Parameters:
+    - `game_id`: ID of the game to retrieve
+
+### Discovery
+
+- `POST /discovery-games`: Get personalized game recommendations based on likes/dislikes
+  - Request body:
+    ```json
+    {
+      "positive_ids": ["12345", "67890"], // Games the user likes
+      "negative_ids": ["54321"],          // Games the user dislikes
+      "excluded_ids": ["11111"],          // Games to exclude from results
+      "limit": 9                          // Number of results to return
+    }
+    ```
+
+- `GET /discovery-context/{game_id}`: Get games similar to a specific game
+  - Parameters:
+    - `game_id`: ID of the game to find similar games for
+    - `limit`: Maximum number of results to return
+    - `excluded_ids`: Comma-separated list of game IDs to exclude
 
 ## Setup & Installation
-
-### Backend
 
 1. Clone the repository
 2. Create a virtual environment: `python -m venv venv`
@@ -36,34 +62,12 @@ This application uses:
    ```
    QDRANT_URL=your_qdrant_url
    QDRANT_API_KEY=your_qdrant_api_key
-   COLLECTION_NAME=steam_games_unique
+   COLLECTION_NAME=your_collection_name
    EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
    CSV_FILE=path_to_your_games_data.csv
    PORT=8000
    ```
-6. Upload data: `python upload_data.py`
-7. Run the backend: `python main.py`
-
-### Frontend
-
-1. Navigate to the frontend directory: `cd frontend`
-2. Install dependencies: `npm install`
-3. Create a `.env.local` file with:
-   ```
-   NEXT_PUBLIC_API_URL=http://localhost:8000
-   ```
-4. Run the frontend: `npm run dev`
-5. Access the application at `http://localhost:3000`
-
-## Usage
-
-1. **Game Discovery**:
-   - Like/dislike games to personalize recommendations
-   - View recommended games based on your preferences
-
-2. **Game Details**:
-   - Click on a game to view detailed information
-   - See similar games at the bottom of the details page
+6. Run the application: `python main.py`
 
 ## Data Format
 
@@ -75,24 +79,34 @@ The CSV file should contain the following columns:
 - `tags`: Comma-separated list of tags
 - `release_date`: Release date of the game
 - `developers`: Game developers
-- `publishers`: Game publishers 
 - `platforms`: Supported platforms
 - `short_description`: Short description of the game
 - `detailed_description`: Detailed description of the game
-- `header_image`: URL to the game's header image
 
-## Deployment
+## Example Usage
 
-### Backend
+### Search for games
 
-The backend can be deployed to any platform that supports Python, such as:
-- Render
-- Heroku
-- DigitalOcean
+```bash
+curl -X GET "http://localhost:8000/search?query=open%20world%20RPG&limit=5"
+```
 
-### Frontend
+### Get game details
 
-The Next.js frontend can be deployed to:
-- Vercel (recommended)
-- Netlify
-- GitHub Pages
+```bash
+curl -X GET "http://localhost:8000/game/123456"
+```
+
+### Get discovery recommendations
+
+```bash
+curl -X POST "http://localhost:8000/discovery-games" \
+     -H "Content-Type: application/json" \
+     -d '{"positive_ids": ["123", "456"], "limit": 5}'
+```
+
+### Get similar games
+
+```bash
+curl -X GET "http://localhost:8000/discovery-context/123456?limit=5"
+```
