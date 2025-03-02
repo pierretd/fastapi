@@ -205,6 +205,28 @@ python test_recommendation_discovery.py
 python test_new_features.py
 ```
 
+## Keep-Alive Functionality
+
+The API has built-in keep-alive functionality to prevent the server from going inactive after periods of no traffic (common with some hosting services that put applications to sleep after 5 minutes of inactivity).
+
+### Built-in Background Task
+
+By default, the API includes a background task that automatically pings the health endpoint every 4 minutes to keep the server active. The interval can be configured using the `KEEPALIVE_INTERVAL` environment variable (in seconds).
+
+```
+KEEPALIVE_INTERVAL=240  # 4 minutes in seconds
+```
+
+### Standalone Keep-Alive Script
+
+Alternatively, you can use the standalone keep-alive script if you prefer to run this separately:
+
+```
+python keep_alive.py --url https://your-api-url.com --interval 240
+```
+
+This script will periodically ping the API's health endpoint and log the results.
+
 ## License
 
 MIT

@@ -194,9 +194,22 @@ def upload_data_to_qdrant():
         # and not just a generic summary of genres/etc.
         short_description = desc["short_description"]
         if not short_description or len(short_description) < 50:
-            # If Steam API didn't provide a good description, use what we have in the CSV
-            # but format it better
-            short_description = f"{row['name']} - {row.get('tags', '')}"
+            # If Steam API didn't provide a good description, create a more natural sounding one
+            # that doesn't just list genres and tags
+            game_name = row["name"]
+            dev_info = f" by {row.get('developers', 'indie developers')}" if row.get("developers") else ""
+            
+            if row.get("genres") and row.get("tags"):
+                # Select at most 2 genres and 3 tags for a cleaner description
+                genres = row.get("genres", "").split(',')[:2]
+                tags = row.get("tags", "").split(',')[:3]
+                
+                genre_text = " and ".join(genres) if len(genres) <= 2 else f"{genres[0]} and more"
+                tag_text = ", ".join(tags) if len(tags) <= 3 else f"{tags[0]}, {tags[1]} and more"
+                
+                short_description = f"{game_name}{dev_info} features {genre_text} gameplay with {tag_text} elements."
+            else:
+                short_description = f"{game_name}{dev_info}. More information coming soon."
         
         metadata.append({
             "name": row["name"],

@@ -14,7 +14,7 @@ fi
 pip install -r requirements.txt
 
 # Set environment variable for the backend URL
-export BACKEND_URL="http://localhost:8000"
+export BACKEND_URL="https://fastapi-5aw3.onrender.com"
 
 # Start the development server
 echo "Starting Next.js development server..."

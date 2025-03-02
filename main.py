@@ -22,7 +22,8 @@ from search import (
     get_discovery_recommendations,
     get_diverse_recommendations,
     get_random_games,
-    get_game_by_id
+    get_game_by_id,
+    get_steam_game_description
 )
 
 # Configure logging
@@ -94,10 +95,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add CORS middleware
+# Add CORS middleware to allow requests from the frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For production, specify your frontend domain
+    allow_origins=["http://localhost:3000"],  # Allow frontend in development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -591,10 +592,37 @@ async def get_game_details(game_id: str, similar_limit: int = 5, response: Respo
         # Get the game details
         game = get_game_by_id(game_id)
         if not game:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Game with ID {game_id} not found"
-            )
+            # Try to fetch directly from Steam API if not in database
+            try:
+                steam_data = get_steam_game_description(game_id)
+                if steam_data and (steam_data['short_description'] or steam_data['detailed_description']):
+                    # Create a minimal game object with Steam data
+                    game = {
+                        "id": game_id,
+                        "score": 1.0,
+                        "payload": {
+                            "name": f"Game {game_id}",  # We don't have the name
+                            "steam_appid": int(game_id),
+                            "price": 0.0,  # We don't have the price
+                            "genres": "",  # We don't have genres
+                            "tags": "",    # We don't have tags
+                            "release_date": "",  # We don't have release date
+                            "developers": "",    # We don't have developers
+                            "platforms": "",     # We don't have platforms
+                            "short_description": steam_data['short_description'],
+                            "detailed_description": steam_data['detailed_description']
+                        }
+                    }
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Game with ID {game_id} not found"
+                    )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Game with ID {game_id} not found: {str(e)}"
+                )
         
         # Get similar games
         similar_games = recommend_games(game_id, similar_limit)

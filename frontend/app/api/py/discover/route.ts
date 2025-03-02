@@ -5,8 +5,8 @@ export async function POST(request: NextRequest) {
     // Get the request body
     const body = await request.json();
     
-    // Get the backend URL from environment variables
-    const backendUrl = process.env.BACKEND_URL || 'https://fastapi-5aw3.onrender.com';
+    // Use the production URL directly
+    const backendUrl = 'https://fastapi-5aw3.onrender.com';
     
     // Forward the request to the backend
     const response = await fetch(`${backendUrl}/discover`, {

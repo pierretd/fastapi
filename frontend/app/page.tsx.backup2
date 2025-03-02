@@ -1,0 +1,611 @@
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
+import ThemeToggle from './components/ThemeToggle';
+
+interface GamePayload {
+  name: string;
+  price: number;
+  short_description: string;
+  release_date: string;
+  developers: string;
+  genres: string;
+  tags: string;
+  steam_appid: string;
+}
+
+interface ApiGame {
+  id: string;
+  score: number;
+  payload: GamePayload;
+}
+
+interface Game {
+  id: string;
+  name: string;
+  price: number;
+  short_description: string;
+  release_date: string;
+  developers: string;
+  genres: string;
+  tags: string;
+  relevance?: number;
+  imageUrl: string;
+}
+
+export default function Home() {
+  const [games, setGames] = useState<Game[]>([]);
+  const [likedGames, setLikedGames] = useState<Game[]>([]);
+  const [dislikedGames, setDislikedGames] = useState<Game[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<{ [key: string]: boolean }>({});
+  const [error, setError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState<{message: string, type: 'success' | 'error' | ''}>({message: '', type: ''});
+  // New state variables for collapsible sections
+  const [heroExpanded, setHeroExpanded] = useState(true);
+  const [likedGamesExpanded, setLikedGamesExpanded] = useState(true);
+  const [dislikedGamesExpanded, setDislikedGamesExpanded] = useState(true);
+  const [preferencesFullscreen, setPreferencesFullscreen] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(true);
+  // Add new state variables for resizable sidebar
+  const [sidebarWidth, setSidebarWidth] = useState(320); // Start with a reasonable default width
+  const [isDragging, setIsDragging] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  // Add width tooltip display
+  const [showWidthTooltip, setShowWidthTooltip] = useState(false);
+  
+  // Use refs to break circular dependencies
+  const handleMouseMoveRef = useRef<(e: MouseEvent) => void>();
+  const handleMouseUpRef = useRef<() => void>();
+
+  // Load liked and disliked games from local storage
+  useEffect(() => {
+    // Initialize the sidebar width to 15% of the window width
+    setSidebarWidth(Math.min(Math.max(window.innerWidth * 0.15, 250), 400));
+    
+    const loadSavedGames = () => {
+      try {
+        const savedLikedGames = localStorage.getItem('likedGames');
+        const savedDislikedGames = localStorage.getItem('dislikedGames');
+        
+        if (savedLikedGames) {
+          setLikedGames(JSON.parse(savedLikedGames));
+        }
+        
+        if (savedDislikedGames) {
+          setDislikedGames(JSON.parse(savedDislikedGames));
+        }
+      } catch (err) {
+        console.error('Error loading saved games:', err);
+        // Continue without saved games if there's an error
+      }
+    };
+    
+    loadSavedGames();
+    fetchRandomGames();
+  }, []);
+
+  // Save liked games to local storage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('likedGames', JSON.stringify(likedGames));
+    } catch (err) {
+      console.error('Error saving liked games:', err);
+    }
+  }, [likedGames]);
+
+  // Save disliked games to local storage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('dislikedGames', JSON.stringify(dislikedGames));
+    } catch (err) {
+      console.error('Error saving disliked games:', err);
+    }
+  }, [dislikedGames]);
+
+  // Fetch random games from the API
+  const fetchRandomGames = async () => {
+    setLoading(true);
+    setError('');
+    setRefreshing(true);
+    
+    try {
+      const response = await fetch(`/api/py/random-games?limit=9`);
+      
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status} ${response.statusText}`);
+      }
+      
+      const apiGames: ApiGame[] = await response.json();
+      
+      // Process the games
+      const processedGames = processApiGames(apiGames);
+      
+      setGames(processedGames);
+    } catch (err) {
+      console.error('Error fetching random games:', err);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Fetch game recommendations based on liked and disliked games
+  const fetchRecommendations = async (liked: string[], disliked: string[]) => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      const payload = {
+        liked_games: liked,
+        disliked_games: disliked,
+        limit: 9
+      };
+      
+      const response = await fetch('/api/py/recommendations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status} ${response.statusText}`);
+      }
+      
+      const apiGames: ApiGame[] = await response.json();
+      
+      // Process the games
+      const processedGames = processApiGames(apiGames);
+      
+      setGames(processedGames);
+    } catch (err) {
+      console.error('Error fetching recommendations:', err);
+      setActionError(err instanceof Error ? err.message : String(err));
+      // If recommendations fail, fall back to random games
+      fetchRandomGames();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle liking a game
+  const handleLike = async (game: Game) => {
+    // Set loading state for this specific game
+    setActionLoading(prev => ({ ...prev, [game.id]: true }));
+    setActionError('');
+    
+    try {
+      // Create new array to avoid mutation
+      const newLikedGames = [...likedGames, game];
+      
+      // Update state in one go
+      setLikedGames(newLikedGames);
+      
+      // Remove from current games display
+      setGames(prevGames => prevGames.filter(g => g.id !== game.id));
+      
+      // Show feedback message
+      setFeedbackMessage({
+        message: "Liked! Finding similar games...",
+        type: "success"
+      });
+      
+        // Update recommendations based on new likes/dislikes
+      await fetchRecommendations(
+          newLikedGames.map(g => g.id), 
+          dislikedGames.map(g => g.id)
+        );
+      
+      // Clear feedback message after 3 seconds
+      setTimeout(() => {
+        setFeedbackMessage({message: '', type: ''});
+      }, 3000);
+      
+    } catch (err) {
+      console.error('Error liking game:', err);
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      // Clear loading state for this game
+      setActionLoading(prev => {
+        const newState = { ...prev };
+        delete newState[game.id];
+        return newState;
+      });
+    }
+  };
+
+  // Handle disliking a game
+  const handleDislike = async (game: Game) => {
+    // Set loading state for this specific game
+    setActionLoading(prev => ({ ...prev, [game.id]: true }));
+    setActionError('');
+    
+    try {
+      // Create new array to avoid mutation
+      const newDislikedGames = [...dislikedGames, game];
+      
+      // Update state in one go
+      setDislikedGames(newDislikedGames);
+      
+      // Remove from current games display
+      setGames(prevGames => prevGames.filter(g => g.id !== game.id));
+      
+      // Show feedback message
+      setFeedbackMessage({
+        message: "Noted! We'll avoid similar titles.",
+        type: "error"
+      });
+      
+        // Update recommendations based on new likes/dislikes
+      await fetchRecommendations(
+          likedGames.map(g => g.id), 
+          newDislikedGames.map(g => g.id)
+        );
+      
+      // Clear feedback message after 3 seconds
+      setTimeout(() => {
+        setFeedbackMessage({message: '', type: ''});
+      }, 3000);
+      
+    } catch (err) {
+      console.error('Error disliking game:', err);
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      // Clear loading state for this game
+      setActionLoading(prev => {
+        const newState = { ...prev };
+        delete newState[game.id];
+        return newState;
+      });
+    }
+  };
+
+  // Reset all history and start fresh
+  const handleResetHistory = () => {
+    setLikedGames([]);
+    setDislikedGames([]);
+    localStorage.removeItem('likedGames');
+    localStorage.removeItem('dislikedGames');
+    fetchRandomGames();
+  };
+
+  // Split comma-separated string into array
+  const splitString = (str: string): string[] => {
+    return str ? str.split(',').map(item => item.trim()).filter(Boolean) : [];
+  };
+  
+  // Format price
+  const formatPrice = (price: number): string => {
+    return price === 0 ? 'Free to Play' : `$${price.toFixed(2)} USD`;
+  };
+
+  // Process API games into our internal format
+  const processApiGames = (apiGames: ApiGame[]): Game[] => {
+    return apiGames.map(apiGame => {
+      // Clean up or enhance description
+      const currentDesc = apiGame.payload.short_description;
+      
+      // Create an enhanced description if it's generic or missing
+      let enhancedDesc = currentDesc;
+      if (!currentDesc || currentDesc.startsWith(`A ${apiGame.payload.genres} game`)) {
+        // Create a better description from the info we have
+        const name = apiGame.payload.name;
+        const genres = apiGame.payload.genres;
+        
+        // Handle tags safely
+        const tagsArray = apiGame.payload.tags ? apiGame.payload.tags.split(',').map(tag => tag.trim()).slice(0, 5) : [];
+        const tagsStr = tagsArray.join(', ');
+        
+        const developers = apiGame.payload.developers || 'an indie studio';
+        
+        enhancedDesc = `${name} is a ${genres} game. ` + 
+                       `It features ${tagsStr} gameplay elements. ` +
+                       `Developed by ${developers}.`;
+                       
+        console.log("Enhanced description:", enhancedDesc);
+      }
+      
+      return {
+        id: apiGame.id,
+        name: apiGame.payload.name,
+        price: apiGame.payload.price,
+        short_description: enhancedDesc,
+        release_date: apiGame.payload.release_date,
+        developers: apiGame.payload.developers,
+        genres: apiGame.payload.genres,
+        tags: apiGame.payload.tags,
+        relevance: apiGame.score,
+        // Construct Steam store image URL using the appid
+        imageUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${apiGame.payload.steam_appid}/header.jpg`
+      };
+    });
+  };
+
+  // Function to check if a game was released in the last 30 days
+  const isNewRelease = (dateString: string): boolean => {
+    if (!dateString) return false;
+    const releaseDate = new Date(dateString);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return releaseDate >= thirtyDaysAgo;
+  };
+
+  // Handle removing a game from liked games list
+  const handleRemoveFromLiked = (game: Game) => {
+    setLikedGames(prev => prev.filter(g => g.id !== game.id));
+  };
+
+  // Handle removing a game from disliked games list
+  const handleRemoveFromDisliked = (game: Game) => {
+    setDislikedGames(prev => prev.filter(g => g.id !== game.id));
+  };
+
+  // Add resize handling functions - simplified
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    
+    const onMouseMove = (e: MouseEvent) => {
+      if (sidebarRef.current) {
+        const newWidth = e.clientX - sidebarRef.current.getBoundingClientRect().left;
+        const windowWidth = window.innerWidth;
+        
+        // Add constraints to maintain usability - minimum 200px, maximum 40% of window width
+        if (newWidth >= 200 && newWidth <= windowWidth * 0.4) {
+          setSidebarWidth(newWidth);
+          setShowWidthTooltip(true);
+        }
+      }
+    };
+    
+    const onMouseUp = () => {
+      setIsDragging(false);
+      setShowWidthTooltip(false);
+      
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+    
+    setIsDragging(true);
+    setShowWidthTooltip(true);
+    
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  };
+
+  return (
+    <main className="flex min-h-screen flex-col bg-color-bg-1 text-color-10">
+      {/* Include the animation styles */}
+      <style jsx global>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        
+        @keyframes slideUp {
+          from { transform: translateY(20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out forwards;
+        }
+        
+        .animate-slideUp {
+          animation: slideUp 0.4s ease-out forwards;
+        }
+        
+        /* Enhanced resize styles */
+        .resize-handle {
+          transition: background-color 0.2s ease;
+        }
+        
+        .resize-handle:hover {
+          background-color: rgba(255, 255, 255, 0.1) !important;
+        }
+        
+        .resize-handle:hover .resize-line {
+          background-color: rgba(255, 255, 255, 0.8) !important;
+        }
+        
+        .resizing .resize-handle {
+          background-color: rgba(255, 255, 255, 0.15) !important;
+        }
+        
+        .resizing .resize-line {
+          background-color: rgba(255, 255, 255, 1) !important;
+        }
+        
+        /* Grid history styles */
+        .grid-history {
+          border-right: 1px solid rgba(255, 255, 255, 0.1);
+          background-color: rgba(0, 0, 0, 0.2);
+          backdrop-filter: blur(8px);
+          display: flex;
+          flex-direction: column;
+        }
+      `}</style>
+
+      {/* Navigation Bar with Glassmorphism */}
+      <header className="sticky top-0 z-50 backdrop-blur-md bg-black/30 border-b border-white/10 shadow-md">
+        <div className="container mx-auto px-4">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo and Brand */}
+            <div className="flex items-center">
+              <Link href="/" className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#3CCBA0] to-[#3B82F6] flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-white">
+                    <path d="M11.25 5.337c0-.355-.186-.676-.401-.959a1.647 1.647 0 01-.349-1.003c0-1.036 1.007-1.875 2.25-1.875S15 2.34 15 3.375c0 .369-.128.713-.349 1.003-.215.283-.401.604-.401.959 0 .332.278.598.61.578 1.91-.114 3.79-.342 5.632-.676a.75.75 0 01.878.645 49.17 49.17 0 01.376 5.452.657.657 0 01-.66.664c-.354 0-.675-.186-.958-.401a1.647 1.647 0 00-1.003-.349c-1.035 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401.31 0 .557.262.534.571a48.774 48.774 0 01-.595 4.845.75.75 0 01-.61.61c-1.82.317-3.673.533-5.555.642a.58.58 0 01-.611-.581c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.035-1.007-1.875-2.25-1.875s-2.25.84-2.25 1.875c0 .369.128.713.349.283.215.604.401.959.401a.641.641 0 01-.658.643 49.118 49.118 0 01-4.708-.36.75.75 0 01-.645-.878c.293-1.614.504-3.257.629-4.924A.53.53 0 005.337 15c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.036 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.369 0 .713.128 1.003.349.283.215.604.401.959.401a.656.656 0 00.659-.663 47.703 47.703 0 00-.31-4.82.75.75 0 01.83-.832c1.343.155 2.703.254 4.077.294a.64.64 0 00.657-.642z" />
+                  </svg>
+                </div>
+                <span className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-gray-100 to-gray-300">
+                  GameVault
+                </span>
+              </Link>
+        </div>
+
+            {/* Desktop Navigation Links */}
+            <nav className="hidden md:flex space-x-1">
+              {['Discover', 'Popular', 'Categories', 'Wishlist'].map((item) => (
+                <Link
+                  key={item}
+                  href={`/${item.toLowerCase()}`}
+                  className="px-4 py-2 text-sm font-medium text-white/80 hover:text-white rounded-full hover:bg-white/5 transition-all duration-200 interactive-element"
+                >
+                  {item}
+                </Link>
+              ))}
+            </nav>
+            
+            {/* Right Section: Search & Profile */}
+            <div className="flex items-center space-x-4">
+              {/* Search Button */}
+              <button 
+                className="glass-effect p-2 rounded-full hover:bg-white/15 transition-colors interactive-element"
+                aria-label="Search"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </button>
+              
+              {/* Profile Button */}
+              <div className="relative">
+                <button
+                  className="glass-effect rounded-full w-8 h-8 flex items-center justify-center hover:bg-white/15 transition-colors interactive-element"
+                  aria-label="Profile"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </button>
+              </div>
+              
+              {/* Theme Toggle */}
+              <ThemeToggle />
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className={`max-w-7xl mx-auto w-full px-4 py-6`}>
+        {/* Hero/Title Area with glassmorphism - Now Collapsible */}
+        <div className="relative mb-10 overflow-hidden rounded-2xl">
+          {/* Toggle button for hero expansion */}
+          <button 
+            onClick={() => setHeroExpanded(!heroExpanded)}
+            className="absolute top-4 right-4 z-20 p-2 rounded-full backdrop-blur-md bg-black/30 text-white/70 hover:text-white hover:bg-black/40 transition-colors"
+            aria-label={heroExpanded ? "Collapse header" : "Expand header"}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              {heroExpanded ? (
+                <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
+              ) : (
+                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+              )}
+            </svg>
+          </button>
+          
+          {/* Background gradient effect */}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#1E293B]/80 to-[#0F172A]/80"></div>
+          
+          {/* Subtle grid pattern overlay */}
+          <div className="absolute inset-0 bg-[url('/grid-pattern.svg')] bg-center opacity-10"></div>
+          
+          {/* Content container - toggle height based on expanded state */}
+          <div className={`relative z-10 px-6 flex flex-col items-start max-w-3xl transition-all duration-500 ease-in-out ${
+            heroExpanded ? 'py-12 md:py-16 lg:py-20' : 'py-4 md:py-5'
+          }`}>
+            <h1 className={`text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight transition-all duration-500 ${
+              heroExpanded ? 'mb-4' : 'mb-0'
+            }`}>
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-gray-100 to-gray-300">
+                Discover Your Next Gaming Adventure
+              </span>
+            </h1>
+            
+            {/* Description and buttons - only show when expanded */}
+            {heroExpanded && (
+              <>
+                <p className="text-lg text-white/80 mb-8 max-w-2xl">
+                  Personalized game recommendations based on your preferences. Like or dislike games to help us understand your taste.
+                </p>
+                
+                <div className="flex flex-wrap gap-3">
+                  <button className="px-5 py-2.5 rounded-full bg-gradient-to-r from-[#3CCBA0] to-[#4CAF50] text-white font-medium hover:shadow-lg hover:shadow-[#4CAF50]/20 transition-all duration-200 interactive-element">
+                    Get Started
+                  </button>
+                  <button className="px-5 py-2.5 rounded-full glass-effect text-white font-medium hover:bg-white/15 transition-all duration-200 interactive-element">
+                    How It Works
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+        
+        {/* Feedback Message - Enhanced with glassmorphism */}
+        {feedbackMessage && feedbackMessage.message && (
+          <div className="glass-card p-4 mb-6 relative overflow-hidden">
+            <div className="flex items-center">
+              <div className="mr-4 flex-shrink-0">
+                {feedbackMessage.type === 'success' ? (
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#3CCBA0]/20 to-[#4CAF50]/20 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-[#4CAF50]" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#F87171]/20 to-[#E57373]/20 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-[#E57373]" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+              <div className="flex-1">
+                <p className="text-white font-medium">{feedbackMessage.message}</p>
+              </div>
+              <button
+                onClick={() => setFeedbackMessage({ message: '', type: '' })}
+                className="ml-4 text-white/60 hover:text-white/90 transition-colors focus:outline-none"
+                aria-label="Dismiss message"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+            {/* Gradient line at bottom */}
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#3CCBA0]/0 via-[#3CCBA0]/70 to-[#3CCBA0]/0"></div>
+          </div>
+        )}
+
+        {/* Main Content Area */}
+        <div className={`flex flex-col md:flex-row gap-0 transition-all duration-500 ${preferencesFullscreen ? 'relative' : ''} ${isDragging ? 'resizing' : ''} pb-8 min-h-[600px]`}>
+          {/* User Preferences Side Panel - Enhanced with glassmorphism, now with collapsible, fullscreen modes and resizable width */}
+          <div 
+            ref={sidebarRef}
+            style={{ 
+              width: historyExpanded ? `${sidebarWidth}px` : 'auto',
+              maxWidth: preferencesFullscreen ? 'none' : '100%',
+              height: historyExpanded && !preferencesFullscreen ? 'auto' : 'auto'
+            }}
+            className={`transition-all duration-300 ease-in-out relative ${
+              preferencesFullscreen 
+                ? 'fixed inset-0 z-50 p-4 pt-20 bg-black/80 backdrop-blur-lg overflow-auto animate-fadeIn'
+                : historyExpanded 
+                  ? 'w-full md:w-auto flex-shrink-0 grid-history h-full flex flex-col' 
+                  : 'lg:max-w-[180px] w-full flex-shrink-0 grid-history'
+            }`}
+          >
+            <div className={`glass-card p-6 ${
+              preferencesFullscreen ? 'max-w-4xl mx-auto animate-slideUp' : 'flex-grow flex flex-col h-full'
+            } display: flex; flex-direction: column;`}>
+              <div className="flex justify-between items-center mb-6">

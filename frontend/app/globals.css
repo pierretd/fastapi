@@ -2,26 +2,1049 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Light Mode (Default) */
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  /* Geist-inspired grayscale palette */
+  --color-bg-1: #ffffff;
+  --color-bg-2: #f9f9f9;
+  --color-1: #f5f5f5;
+  --color-2: #eaeaea;
+  --color-3: #e1e1e1;
+  --color-4: #cccccc;
+  --color-5: #b3b3b3;
+  --color-6: #888888;
+  --color-7: #666666;
+  --color-8: #444444;
+  --color-9: #333333;
+  --color-10: #111111;
+
+  /* Legacy colors preserved for backward compatibility */
+  --foreground-rgb: 51, 51, 51;
+  --background-rgb: 255, 255, 255;
+  --steam-blue: 26, 159, 255;
+  --steam-teal: 0, 209, 255;
+  --steam-card-bg: 245, 245, 245;
+  --like-green: 51, 204, 102;
+  --dislike-red: 255, 92, 92;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+/* Dark Mode */
+.dark {
+  /* Geist-inspired grayscale palette for dark mode */
+  --color-bg-1: #111111;
+  --color-bg-2: #1a1a1a;
+  --color-1: #212121;
+  --color-2: #333333;
+  --color-3: #444444;
+  --color-4: #555555;
+  --color-5: #666666;
+  --color-6: #888888;
+  --color-7: #aaaaaa;
+  --color-8: #cccccc;
+  --color-9: #e0e0e0;
+  --color-10: #ffffff;
+
+  /* Legacy colors preserved for backward compatibility */
+  --foreground-rgb: 229, 229, 229;
+  --background-rgb: 17, 17, 17;
+  --steam-card-bg: 33, 33, 33;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
+  color: var(--color-10);
+  background: var(--color-bg-1);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-montserrat), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--color-10);
+}
+
+/* Steam-inspired card hover effect */
+.game-card {
+  transition: all 0.3s ease;
+  background-color: var(--color-1);
+  border: 1px solid var(--color-4);
+}
+
+.game-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+  border-color: var(--color-5);
+}
+
+/* Modern Nike-inspired card styling */
+@layer components {
+  .product-card {
+    @apply relative overflow-hidden rounded-xl bg-color-2 transition-all duration-300 h-full flex flex-col;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    will-change: transform, box-shadow;
+  }
+  
+  .product-card:hover {
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+    transform: translateY(-4px) scale(1.01);
+  }
+  
+  .product-card:active {
+    transform: translateY(0) scale(0.99);
+    transition: transform 0.1s;
+  }
+  
+  .product-card-image {
+    @apply relative overflow-hidden rounded-xl w-full h-full;
+    aspect-ratio: 16/9;
+  }
+  
+  .product-card-content {
+    @apply p-5;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+  }
+  
+  .product-tag {
+    @apply inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full;
+    transition: all 0.2s ease;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+}
+
+.product-tag:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+/* Navigation links */
+.nav-link {
+  color: var(--color-9);
+}
+
+.nav-link:hover {
+  color: var(--color-10);
+}
+
+.nav-link.active {
+  color: var(--color-10);
+  font-weight: 600;
+}
+
+/* Buttons */
+.btn-primary {
+  background-color: var(--color-2);
+  color: var(--color-10);
+  border: 1px solid var(--color-4);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-3);
+}
+
+/* Custom scrollbar for Steam-like aesthetic */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Animation for like/dislike feedback */
+@keyframes feedback-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.feedback-animation {
+  animation: feedback-bounce 0.5s ease;
+}
+
+/* Card appear animation */
+@keyframes card-appear {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card-appear {
+  animation: fadeInUp 0.5s forwards;
+  opacity: 0;
+}
+
+/* Staggered animation for multiple cards */
+/* Replace SCSS @for with individual selectors */
+.card-appear:nth-child(1) { animation-delay: 0.05s; }
+.card-appear:nth-child(2) { animation-delay: 0.1s; }
+.card-appear:nth-child(3) { animation-delay: 0.15s; }
+.card-appear:nth-child(4) { animation-delay: 0.2s; }
+.card-appear:nth-child(5) { animation-delay: 0.25s; }
+.card-appear:nth-child(6) { animation-delay: 0.3s; }
+.card-appear:nth-child(7) { animation-delay: 0.35s; }
+.card-appear:nth-child(8) { animation-delay: 0.4s; }
+.card-appear:nth-child(9) { animation-delay: 0.45s; }
+
+/* Glassmorphism */
+.glass-effect {
+  @apply backdrop-blur-md bg-white/10 border border-white/20;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+
+.glass-surface {
+  @apply backdrop-blur-md bg-white/10;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-card {
+  @apply rounded-xl overflow-hidden;
+  border-radius: 0.5rem; /* Match with grid-history (8px) */
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: none; /* Remove shadow that creates gap between panels */
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  height: 100%;
+  margin: 0;
+  overflow: hidden; /* Ensure content doesn't overflow rounded corners */
+}
+
+/* Shine effect for cards */
+.product-card::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
   background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+    to bottom right,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: rotate(30deg);
+  transition: transform 0.6s ease-out;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.product-card:hover::after {
+  opacity: 1;
+  transform: rotate(30deg) translate(20%, 20%);
+}
+
+.product-card-image img {
+  transition: transform 0.7s cubic-bezier(0.33, 1, 0.68, 1);
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+.product-card:hover .product-card-image img {
+  transform: scale(1.07);
+}
+
+.product-card-content {
+  padding: 1.25rem;
+}
+
+.product-card-content h3 {
+  transition: color 0.2s ease;
+}
+
+.product-tag:hover {
+  background-color: var(--color-3);
+  transform: translateY(-1px);
+}
+
+/* Card Buttons */
+.card-button {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.card-button::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: currentColor;
+  opacity: 0.05;
+  transition: opacity 0.2s ease;
+}
+
+.card-button:hover::after {
+  opacity: 0.1;
+}
+
+.card-button:active {
+  transform: scale(0.98);
+}
+
+/* Loading shimmer effect */
+@keyframes shimmer {
+  0% {
+    background-position: -468px 0;
+  }
+  100% {
+    background-position: 468px 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(to right, var(--color-2) 8%, var(--color-3) 18%, var(--color-2) 33%);
+  background-size: 800px 104px;
+  animation: shimmer 1.5s infinite linear;
+  border-radius: 12px;
+}
+
+/* Line clamp utilities for consistent text height */
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Make sure grid maintains consistent heights */
+.grid {
+  display: grid;
+  grid-auto-rows: 1fr;
+}
+
+/* Delay utilities for staggered animations */
+.delay-50 { animation-delay: 50ms; }
+.delay-100 { animation-delay: 100ms; }
+.delay-150 { animation-delay: 150ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-250 { animation-delay: 250ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-350 { animation-delay: 350ms; }
+.delay-400 { animation-delay: 400ms; }
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Typography enhancements */
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.02em;
+}
+
+/* Micro-interactions for interactive elements */
+.interactive-element {
+  @apply transition-all duration-200;
+}
+
+.interactive-element:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+
+.interactive-element:active {
+  transform: translateY(1px);
+  transition: transform 0.1s;
+}
+
+/* Enhanced button styling with modern hover effects */
+.card-button {
+  @apply transition-all duration-200;
+  will-change: transform, box-shadow;
+}
+
+.card-button:hover {
+  transform: translateY(-2px);
+}
+
+.card-button:active {
+  transform: translateY(1px);
+  transition: transform 0.1s;
+}
+
+/* Gradient animations */
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-gradient {
+  animation: gradient 3s ease infinite;
+}
+
+.animate-pulse-slow {
+  animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Advanced glassmorphism effects */
+.frost-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+.text-glow {
+  text-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+}
+
+.text-gradient {
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  background-image: linear-gradient(to right, #fff, #aaa);
+}
+
+/* Grid background pattern */
+.grid-pattern {
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Enhanced scrollbar styling */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Enhanced focus states for accessibility */
+.focus-ring:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+/* Shimmer loading effect */
+.shimmer-effect {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Aspect ratio utility for consistent card dimensions */
+.aspect-ratio-16\/9 {
+  aspect-ratio: 16/9;
+}
+
+/* Custom Scrollbar Styles */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Enhanced Mobile Responsiveness */
+@media (max-width: 640px) {
+  .grid-history {
+    position: fixed;
+    top: 4rem;
+    left: 0;
+    right: 0;
+    bottom: auto;
+    max-height: 50vh;
+    width: 100% !important;
+    z-index: 40;
+    border-radius: 0 0 1rem 1rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+  }
+  
+  .history-collapsed {
+    transform: translateY(calc(-100% + 50px));
+  }
+  
+  .resize-handle {
+    display: none;
+  }
+  
+  .game-grid-container {
+    margin-top: 60px;
+  }
+  
+  /* For mobile, we want the history panel to slide up/down instead of left/right */
+  .history-panel-container {
+    width: 100% !important;
+    transform: translateY(0);
+    transition: transform 0.3s ease-in-out;
+  }
+  
+  .history-panel-container.hidden {
+    transform: translateY(-100%);
+  }
+}
+
+/* History Panel Collapsed/Expanded States */
+@media (min-width: 641px) {
+  .history-panel-container {
+    min-width: 300px;
+    max-width: 400px;
+    transition: width 0.3s ease-in-out, opacity 0.3s ease-in-out;
+  }
+  
+  .history-panel-container.md\:w-0 {
+    opacity: 0;
+  }
+}
+
+/* Responsive Grid Layout */
+@media (max-width: 768px) {
+  .grid[style*="grid-template-columns: repeat(3, 1fr)"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+    grid-template-rows: auto !important;
+  }
+  
+  /* Responsive card spacing for tablet */
+  .card-grid {
+    column-gap: 1rem; /* 16px */
+    row-gap: 0.5rem; /* 8px */
+    padding: 1rem;
+  }
+  
+  .game-grid-container {
+    --card-spacing: 1rem; /* 16px */
+    --card-vertical-spacing: 0.5rem; /* 8px */
+  }
+}
+
+@media (max-width: 480px) {
+  .grid[style*="grid-template-columns: repeat(3, 1fr)"] {
+    grid-template-columns: repeat(1, 1fr) !important;
+    grid-template-rows: auto !important;
+  }
+  
+  /* Responsive card spacing for mobile */
+  .card-grid {
+    column-gap: 0.75rem; /* 12px */
+    row-gap: 0.5rem; /* 8px */
+    padding: 0.75rem;
+  }
+  
+  .game-grid-container {
+    --card-spacing: 0.75rem; /* 12px */
+    --card-vertical-spacing: 0.5rem; /* 8px */
+  }
+}
+
+/* Game Card Aspect Ratio Adjustments */
+.game-card-horizontal {
+  aspect-ratio: 16/8;  /* More horizontal (2:1 ratio) */
+}
+
+/* Card Layout and Spacing Utilities */
+.card-grid {
+  display: grid;
+  column-gap: 1.25rem; /* 20px horizontal gap */
+  row-gap: 0.75rem; /* 12px vertical gap */
+  padding: 1.25rem;
+  width: 100%;
+  height: 100%; /* Ensure full height */
+}
+
+.card-container {
+  height: 100%;
+  width: 100%;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card-container:hover {
+  transform: translateY(-4px) scale(1.02);
+  z-index: 1;
+}
+
+/* Consistent Card Spacing */
+.game-grid-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0; /* Ensure no bottom padding */
+  margin-bottom: 0; /* Ensure no bottom margin */
+  transition: width 0.5s ease-in-out, margin-left 0.5s ease-in-out;
+  width: 100%;
+  will-change: width;
+}
+
+/* Card Grid adjustments for fullscreen mode */
+.history-hidden .game-grid-container {
+  width: 100%;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .game-grid-container {
+    width: 100%;
+  }
+}
+
+.game-grid-container .grid {
+  column-gap: var(--card-spacing);
+  row-gap: var(--card-vertical-spacing);
+  padding: 0;
+  height: 100%;
+  flex: 1;
+}
+
+/* Game card styling to fill available space */
+.game-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Make sure the grid maintains consistent heights and fills space */
+.grid {
+  display: grid;
+  grid-auto-rows: 1fr;
+  height: 100%;
+}
+
+/* Line Clamp Utilities */
+.line-clamp-1 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.line-clamp-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.line-clamp-3 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+/* Aspect Ratio Fallbacks */
+.aspect-square {
+  aspect-ratio: 1 / 1;
+}
+
+.aspect-video {
+  aspect-ratio: 16 / 9;
+}
+
+.aspect-portrait {
+  aspect-ratio: 2 / 3;
+}
+
+/* Focus Styles for Accessibility */
+.focus-visible:focus-visible {
+  outline: 2px solid #3CCBA0;
+  outline-offset: 2px;
+}
+
+/* Grid history styles */
+.grid-history {
+  border-right: none;
+  border-bottom: none;
+  background-color: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border-radius: 0.5rem 0 0 0.5rem;
+  overflow: hidden;
+}
+
+/* Make sure the game card has rounded corners only on the right side */
+.game-grid-container > .glass-card {
+  border-radius: 0 0.5rem 0.5rem 0;
+  border-left: none;
+}
+
+/* Remove any box shadows that might create perceived gaps */
+.history-panel-container, .game-grid-container {
+  box-shadow: none;
+}
+
+/* Make game grid match history height exactly */
+.game-grid-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0;
+}
+
+/* History Panel Container */
+.history-panel-container {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  --history-panel-width: 25%;
+  max-width: 320px;
+  will-change: transform, opacity, width;
+}
+
+/* Custom styles for history panel animation */
+.history-panel-container {
+  transition: all 0.3s ease-in-out;
+}
+
+.history-panel-container .grid-history {
+  transition: transform 0.3s ease-in-out, opacity 0.2s ease-in-out;
+}
+
+@media (min-width: 641px) {
+  .history-panel-container.md\:opacity-0 {
+    margin-left: -4px;
+  }
+  
+  .history-panel-container.md\:opacity-0 .grid-history {
+    transform: translateX(-30px);
+  }
+}
+
+/* Ensure the game grid transitions smoothly */
+.game-grid-container {
+  transition: width 0.5s ease-in-out, margin-left 0.5s ease-in-out;
+  width: 100%;
+  will-change: width;
+}
+
+/* Animation for history hint notification */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slideIn {
+  animation: slideIn 0.3s ease-out forwards;
+}
+
+/* History Tab styling */
+.history-tab button {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  position: relative;
+  overflow: hidden;
+}
+
+.history-tab button:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateX(4px);
+}
+
+.history-tab button::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0) 50%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  transform: translateY(100%);
+  transition: transform 0.6s ease;
+}
+
+.history-tab button:hover::after {
+  transform: translateY(0);
+}
+
+/* Badge counter animation */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(60, 203, 160, 0.7);
+  }
+  70% {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 6px rgba(60, 203, 160, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(60, 203, 160, 0);
+  }
+}
+
+.history-tab button .bg-\[\#3CCBA0\] {
+  animation: pulse 2s infinite cubic-bezier(0.66, 0, 0, 1);
+}
+
+/* Mobile overlay backdrop filter enhancement */
+.bg-black\/30.backdrop-blur-sm {
+  backdrop-filter: blur(8px);
+}
+
+/* Smoother close button animations */
+.absolute.top-2.right-2 button {
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.absolute.top-2.right-2 button:hover {
+  background-color: rgba(0, 0, 0, 0.4);
+  transform: scale(1.1) rotate(-90deg);
+}
+
+/* Shadow enhancement for depth */
+.history-panel-container {
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Adjust for better mobile experience */
+@media (max-width: 768px) {
+  .history-visible .game-grid-container {
+    width: 100%;
+    filter: blur(2px);
+    pointer-events: none;
+  }
+  
+  .history-panel-container {
+    position: fixed !important;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    max-width: 80% !important;
+    width: 320px !important;
+    z-index: 100 !important;
+  }
+}
+
+/* History panel expansion/collapse transitions */
+.history-visible .game-grid-container {
+  width: calc(100% - var(--history-panel-width, 25%));
+}
+
+/* Enhanced animation for the history panel */
+@keyframes panelSlideIn {
+  from {
+    transform: translateX(-30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.history-panel-container.opacity-100 {
+  animation: panelSlideIn 0.5s ease-out forwards;
+}
+
+/* More pronounced history tab hover effect */
+.history-tab button {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  position: relative;
+  overflow: hidden;
+}
+
+.history-tab button:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateX(4px);
+}
+
+.history-tab button::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0) 50%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  transform: translateY(100%);
+  transition: transform 0.6s ease;
+}
+
+.history-tab button:hover::after {
+  transform: translateY(0);
+}
+
+/* Badge counter animation */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(60, 203, 160, 0.7);
+  }
+  70% {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 6px rgba(60, 203, 160, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(60, 203, 160, 0);
+  }
+}
+
+.history-tab button .bg-\[\#3CCBA0\] {
+  animation: pulse 2s infinite cubic-bezier(0.66, 0, 0, 1);
+}
+
+/* New class for history panel content */
+.history-panel-content {
+  border-right: none;
+  border-bottom: none;
+  background-color: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .history-panel-content {
+    position: fixed;
+    top: 4rem;
+    left: 0;
+    right: 0;
+    bottom: auto;
+    max-height: 50vh;
+    width: 100% !important;
+    z-index: 40;
+    border-radius: 0 0 1rem 1rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-in-out forwards;
 }

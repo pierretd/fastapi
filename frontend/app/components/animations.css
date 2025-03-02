@@ -1,0 +1,383 @@
+/* Fade In Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Subtle Pulse Animation for CTA buttons */
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+  }
+}
+
+.animate-pulse-cta {
+  animation: pulse 2s infinite;
+}
+
+/* Hover Card Animation */
+@keyframes hoverReveal {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hover-reveal {
+  animation: hoverReveal 0.2s ease-out forwards;
+}
+
+/* Like/Dislike Animation */
+@keyframes bumpScale {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-bump {
+  animation: bumpScale 0.3s ease-in-out;
+}
+
+/* Slide up animation (for feedback messages) */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slideUp {
+  animation: slideUp 0.4s ease-out forwards;
+}
+
+/* Slide down animation (for feedback messages disappearing) */
+@keyframes slideDown {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+}
+
+.animate-slideDown {
+  animation: slideDown 0.3s ease-in forwards;
+}
+
+/* Staggered appearance for game cards */
+.stagger-item:nth-child(1) { animation-delay: 0.05s; }
+.stagger-item:nth-child(2) { animation-delay: 0.1s; }
+.stagger-item:nth-child(3) { animation-delay: 0.15s; }
+.stagger-item:nth-child(4) { animation-delay: 0.2s; }
+.stagger-item:nth-child(5) { animation-delay: 0.25s; }
+.stagger-item:nth-child(6) { animation-delay: 0.3s; }
+.stagger-item:nth-child(7) { animation-delay: 0.35s; }
+.stagger-item:nth-child(8) { animation-delay: 0.4s; }
+.stagger-item:nth-child(9) { animation-delay: 0.45s; }
+
+/* Subtle glow effect */
+@keyframes glow {
+  0% {
+    box-shadow: 0 0 5px rgba(138, 43, 226, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(138, 43, 226, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 5px rgba(138, 43, 226, 0.2);
+  }
+}
+
+.hover-glow:hover {
+  animation: glow 2s infinite;
+}
+
+/* Button click effect */
+@keyframes buttonClick {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.interactive-element:active {
+  animation: buttonClick 0.2s ease-in-out;
+}
+
+/* Refresh animation */
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-rotate {
+  animation: rotate 1s linear infinite;
+}
+
+/* Card Hover Animation - Enhanced specifically for game cards */
+@keyframes cardHoverIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.card-hover-in {
+  animation: cardHoverIn 0.25s cubic-bezier(0.2, 0, 0.2, 1) forwards;
+}
+
+/* Button Interaction Animation - Specifically for thumbs up/down */
+@keyframes buttonInteract {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.92);
+  }
+  70% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.button-interact {
+  animation: buttonInteract 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Pulse Subtle Animation for hero title */
+@keyframes pulseSubtle {
+  0% {
+    text-shadow: 0 0 0px rgba(255, 255, 255, 0);
+  }
+  50% {
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+  }
+  100% {
+    text-shadow: 0 0 0px rgba(255, 255, 255, 0);
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulseSubtle 3s ease-in-out infinite;
+}
+
+/* Floating animation for empty state elements */
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Width expansion animation for underlines and separators */
+@keyframes expandWidth {
+  0% {
+    width: 0;
+    opacity: 0.3;
+  }
+  100% {
+    width: 100%;
+    opacity: 1;
+  }
+}
+
+.animate-expandWidth {
+  animation: expandWidth 1.5s ease-out forwards;
+}
+
+/* Slide in from right animation for taglines */
+@keyframes slideInRight {
+  0% {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.8s ease-out forwards;
+}
+
+/* Game Thumbnail Hover Animations */
+@keyframes thumbnailHover {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  100% {
+    transform: scale(1.05);
+    filter: brightness(1.1);
+  }
+}
+
+.thumbnail-hover {
+  transition: all 0.3s cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+.thumbnail-hover:hover {
+  animation: thumbnailHover 0.3s forwards;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+}
+
+/* Game Card Border Glow */
+@keyframes borderGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+    border-color: rgba(255, 255, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 10px 0 rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+}
+
+.border-glow {
+  transition: all 0.3s ease;
+}
+
+.border-glow:hover {
+  animation: borderGlow 0.3s forwards;
+}
+
+/* Like Button Hover Animation */
+@keyframes likeButtonHover {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.2);
+  }
+  100% {
+    transform: scale(1.1);
+    box-shadow: 0 0 15px 0 rgba(74, 222, 128, 0.4);
+  }
+}
+
+.like-button-hover {
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.like-button-hover:hover {
+  animation: likeButtonHover 0.2s forwards;
+}
+
+/* Dislike Button Hover Animation */
+@keyframes dislikeButtonHover {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.2);
+  }
+  100% {
+    transform: scale(1.1);
+    box-shadow: 0 0 15px 0 rgba(239, 68, 68, 0.4);
+  }
+}
+
+.dislike-button-hover {
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.dislike-button-hover:hover {
+  animation: dislikeButtonHover 0.2s forwards;
+}
+
+/* Zen Mode effects */
+.zen-mode-transition {
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.zen-mode-active .game-card-container {
+  padding: 0;
+  gap: 0;
+  background: black;
+}
+
+.zen-mode-image {
+  filter: brightness(1.05) contrast(1.05);
+  transition: all 0.4s ease-out;
+}
+
+.zen-mode-image:hover {
+  filter: brightness(1.2) contrast(1.1);
+  transform: scale(1.02);
+}
+
+.zen-mode-grid {
+  gap: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  overflow: hidden;
+}
+
+/* Enhanced hover effects for zen mode */
+@keyframes zenHoverReveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.zen-hover-reveal {
+  animation: zenHoverReveal 0.3s ease-out forwards;
+} 

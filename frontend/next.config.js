@@ -6,7 +6,7 @@ const nextConfig = {
   },
   async rewrites() {
     const isProduction = process.env.NODE_ENV === 'production';
-    const apiUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
+    const apiUrl = 'https://fastapi-5aw3.onrender.com';
     
     return [
       {

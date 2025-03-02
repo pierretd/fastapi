@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    // Get the backend URL from environment variables or default to the production URL
-    const backendUrl = process.env.BACKEND_URL || 'https://fastapi-5aw3.onrender.com';
+    // Use the production URL directly
+    const backendUrl = 'https://fastapi-5aw3.onrender.com';
     
     // Test the random-games endpoint
     const randomGamesResponse = await fetch(`${backendUrl}/random-games?limit=3`);

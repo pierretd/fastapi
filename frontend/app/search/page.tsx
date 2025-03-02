@@ -4,14 +4,19 @@ import { useState } from 'react';
 import Link from 'next/link';
 
 interface Game {
-  id: number;
+  id: string;
   name: string;
   price: number;
   short_description: string;
+  detailed_description?: string;
+  raw_description?: string;
   release_date: string;
-  developer: string;
-  genres: string[];
+  developers: string;
+  genres: string;
+  tags: string;
+  platforms: string;
   relevance?: number;
+  imageUrl: string;
 }
 
 interface SearchResponse {
@@ -155,17 +160,17 @@ export default function Search() {
                                 </div>
                                 
                                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                                  <span>{game.developer}</span>
+                                  <span>{game.developers}</span>
                                 </div>
                               </div>
                               
-                              <div className="mt-2 flex flex-wrap gap-1">
-                                {game.genres.map((genre, idx) => (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {game.genres.split(',').map((genre: string, idx: number) => (
                                   <span 
-                                    key={idx}
-                                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+                                    key={idx} 
+                                    className="px-2 py-1 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded"
                                   >
-                                    {genre}
+                                    {genre.trim()}
                                   </span>
                                 ))}
                               </div>

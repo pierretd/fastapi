@@ -10,6 +10,7 @@ interface Game {
   price: number;
   short_description: string;
   detailed_description?: string;
+  raw_description?: string;
   release_date: string;
   developers: string;
   platforms: string;
@@ -17,6 +18,7 @@ interface Game {
   tags: string;
   similar_games?: any[];
   relevance?: number;
+  imageUrl?: string;
 }
 
 interface SearchResponse {
