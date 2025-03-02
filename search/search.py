@@ -49,11 +49,15 @@ def set_sparse_model(self, model_name):
 
 def get_fastembed_vector_params(self):
     """Return VectorParams for fastembed (monkey-patch for compatibility)"""
-    return VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+    return {
+        "fast-bge-small-en-v1.5": VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+    }
 
 def get_fastembed_sparse_vector_params(self):
     """Return SparseVectorParams for fastembed (monkey-patch for compatibility)"""
-    return SparseVectorParams(index=SparseIndexParams())
+    return {
+        "fast-sparse-splade_pp_en_v1": SparseVectorParams(index=SparseIndexParams())
+    }
 
 def add(self, collection_name, documents, metadata, ids):
     """

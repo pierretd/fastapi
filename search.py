@@ -28,6 +28,33 @@ VECTOR_SIZE = int(os.getenv("VECTOR_SIZE", 384))
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", 100))
 CSV_FILE = os.getenv("CSV_FILE", "jan-25-released-games copy.csv")
 
+# Define methods to monkey-patch onto QdrantClient
+def set_model(self, model_name):
+    """Set the dense embedding model"""
+    self._model_name = model_name
+    
+def set_sparse_model(self, model_name):
+    """Set the sparse embedding model"""
+    self._sparse_model_name = model_name
+
+def get_fastembed_vector_params(self):
+    """Return named VectorParams for fastembed"""
+    return {
+        "fast-bge-small-en": VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+    }
+
+def get_fastembed_sparse_vector_params(self):
+    """Return named SparseVectorParams for fastembed"""
+    return {
+        "fast-sparse-splade_pp_en_v1": SparseVectorParams(index=SparseIndexParams())
+    }
+
+# Monkey-patch methods onto the QdrantClient class
+QdrantClient.set_model = set_model
+QdrantClient.set_sparse_model = set_sparse_model
+QdrantClient.get_fastembed_vector_params = get_fastembed_vector_params
+QdrantClient.get_fastembed_sparse_vector_params = get_fastembed_sparse_vector_params
+
 # Connect to Qdrant
 qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
@@ -177,7 +204,9 @@ def search_games(
     """
     try:
         # Get the embedding for the query text
+        print(f"Generating embeddings for query: '{query_text}'")
         vector = get_dense_embedding(query_text)
+        print(f"Generated dense vector with {len(vector)} dimensions")
         
         # Default to using only dense vectors
         search_result = None
@@ -185,24 +214,34 @@ def search_games(
         try:
             if use_hybrid:
                 # Try hybrid search first (combining dense and sparse vectors)
-                print(f"Attempting hybrid search with query: {query_text}")
+                print(f"Attempting hybrid search with query: '{query_text}'")
+                
+                # Get sparse vector using FastEmbed integration
+                sparse_vector = get_sparse_embedding(query_text)
+                sparse_keys = list(sparse_vector.keys())
+                print(f"Generated sparse vector with {len(sparse_keys)} tokens. Sample tokens: {sparse_keys[:5] if len(sparse_keys) > 5 else sparse_keys}")
                 
                 # For hybrid search, we need to use the correct vector names from our collection
+                print(f"Using collection: {COLLECTION_NAME}")
+                print(f"Vector names: dense='fast-bge-small-en', sparse='fast-sparse-splade_pp_en_v1'")
+                
+                # Log the API request we're about to make for debugging
                 search_result = qdrant.search(
                     collection_name=COLLECTION_NAME,
                     query_vector={
                         "fast-bge-small-en": vector,  # Dense vector with the correct name
                     },
                     query_sparse_vector={
-                        "fast-sparse-splade_pp_en_v1": get_sparse_embedding(query_text)  # Sparse vector with correct name
+                        "fast-sparse-splade_pp_en_v1": sparse_vector  # Sparse vector with correct name
                     },
                     limit=limit,
                     offset=offset,
                     with_payload=with_payload,
                 )
+                print(f"Hybrid search returned {len(search_result)} results")
             else:
                 # If hybrid is not requested, use just the dense vector
-                print(f"Using dense vector search with query: {query_text}")
+                print(f"Using dense vector search with query: '{query_text}'")
                 search_result = qdrant.search(
                     collection_name=COLLECTION_NAME,
                     query_vector=("fast-bge-small-en", vector),  # Named dense vector
@@ -210,6 +249,7 @@ def search_games(
                     offset=offset,
                     with_payload=with_payload,
                 )
+                print(f"Dense search returned {len(search_result)} results")
             
             # Format the results
             items = format_search_results(search_result)
@@ -226,6 +266,7 @@ def search_games(
             print(f"Named vector search failed: {e}")
             try:
                 # Fall back to direct vector search as last resort
+                print(f"Falling back to direct vector search")
                 search_result = qdrant.search(
                     collection_name=COLLECTION_NAME,
                     query_vector=vector,  # Direct vector fallback
@@ -233,6 +274,7 @@ def search_games(
                     offset=offset,
                     with_payload=with_payload,
                 )
+                print(f"Direct vector search returned {len(search_result)} results")
                 
                 items = format_search_results(search_result)
                 
@@ -248,6 +290,7 @@ def search_games(
                 # If all search methods fail, try getting random games as fallback
                 print(f"Search failed, falling back to random games")
                 random_results = get_random_games(limit=limit)
+                print(f"Returning {len(random_results)} random games as fallback")
                 
                 return {
                     "items": random_results,
@@ -709,11 +752,19 @@ def format_search_results(search_result):
 
 # Add a helper function to get sparse embeddings
 def get_sparse_embedding(text):
-    """Get sparse embedding for text"""
+    """Get sparse embedding for text using FastEmbed's sparse model integration"""
     try:
-        # This is a placeholder - you would normally use a proper sparse embedding model
-        # For SPLADE or other sparse embedding methods
-        # For now, we'll create a simple TF-IDF like representation
+        # Use Qdrant client with the specified sparse model
+        # This leverages the sparse_model we set earlier with qdrant.set_sparse_model()
+        sparse_vector = qdrant.encode_sparse(
+            text=text,
+            model=SPARSE_MODEL
+        )
+        
+        return sparse_vector.dict
+    except Exception as e:
+        print(f"Error generating sparse embedding with FastEmbed: {e}")
+        # Fallback to simple token frequency approach if the sparse model fails
         tokens = text.lower().split()
         sparse_vector = {}
         for token in tokens:
@@ -722,9 +773,6 @@ def get_sparse_embedding(text):
             else:
                 sparse_vector[token] = 1.0
         return sparse_vector
-    except Exception as e:
-        print(f"Error generating sparse embedding: {e}")
-        return {}
 
 if __name__ == "__main__":
     # Check if collection exists and create/upload if needed
