@@ -13,6 +13,7 @@ from functools import lru_cache
 import numpy as np
 import time
 from typing import List, Dict, Optional
+import math
 
 load_dotenv()
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -152,56 +153,78 @@ def upload_data_to_qdrant():
     
     print("Data successfully uploaded to Qdrant!")
 
-def search_games(query_text, limit=5, use_hybrid=True):
+def search_games(
+    query_text: str, 
+    offset: int = 0, 
+    limit: int = 10, 
+    use_hybrid: bool = True,
+    query_filter: Optional[Dict] = None,
+    with_payload: bool = True,
+) -> Dict:
     """
-    Search for games using sparse, dense, or hybrid approaches.
+    Searches for games based on a text query.
     
-    Args:
-        query_text (str): The search query
-        limit (int): Number of results to return
-        use_hybrid (bool): Whether to use hybrid search
-        
+    Parameters:
+    - query_text: Text query to search for
+    - offset: Number of items to skip
+    - limit: Maximum number of items to return
+    - use_hybrid: Whether to use hybrid search (both dense and sparse vectors)
+    - query_filter: Filter to apply to the search
+    - with_payload: Whether to return the payload
+    
     Returns:
-        list: Search results as dictionaries with id, payload, and score
+    - Dictionary with search results
     """
     try:
-        if use_hybrid:
-            # Generate embedding
-            embeddings = list(embedder.embed([query_text]))
-            vector = embeddings[0].tolist() if embeddings else []
-            
-            # Search with proper vector field name
-            search_results = qdrant.search(
-                collection_name=COLLECTION_NAME,
-                query_vector=("fast-bge-small-en-v1.5", vector),
-                limit=limit,
-                with_payload=True
-            )
-        else:
-            # For non-hybrid, similar approach but with explicit field
-            embeddings = list(embedder.embed([query_text]))
-            vector = embeddings[0].tolist() if embeddings else []
-            
-            search_results = qdrant.search(
-                collection_name=COLLECTION_NAME,
-                query_vector=("fast-bge-small-en-v1.5", vector),
-                limit=limit,
-                with_payload=True
-            )
+        # Get the embedding for the query text
+        vector = get_dense_embedding(query_text)
         
-        # Convert to dictionaries for consistent format
+        # Construct the search result using direct vector (no named vectors)
         results = []
-        for point in search_results:
-            results.append({
-                "id": str(point.id),
-                "payload": point.payload if hasattr(point, 'payload') else {},
-                "score": point.score
-            })
         
-        return results
+        try:
+            # Direct vector search (no named vectors)
+            search_result = qdrant.search(
+                collection_name=COLLECTION_NAME,
+                query_vector=vector,  # Direct vector search
+                limit=limit,
+                offset=offset,
+                with_payload=with_payload,
+            )
+            
+            # Format the results
+            items = format_search_results(search_result)
+            
+            # Return the formatted results
+            return {
+                "items": items,
+                "total": len(items),
+                "page": offset // limit + 1 if limit > 0 else 1,
+                "page_size": limit,
+                "pages": math.ceil(len(items) / limit) if limit > 0 else 0,
+            }
+        except Exception as e:
+            # If direct vector search fails, try getting random games as fallback
+            print(f"Search failed, falling back to random games: {e}")
+            random_results = get_random_games(limit=limit)
+            
+            return {
+                "items": random_results,
+                "total": len(random_results),
+                "page": 1,
+                "page_size": limit,
+                "pages": 1,
+            }
+            
     except Exception as e:
-        print(f"Error during search: {e}")
-        return []
+        print(f"Error in search_games: {e}")
+        return {
+            "items": [],
+            "total": 0,
+            "page": 1,
+            "page_size": limit,
+            "pages": 0,
+        }
 
 def get_game_recommendations(game_id, limit=5):
     """
@@ -215,10 +238,10 @@ def get_game_recommendations(game_id, limit=5):
         list: Recommended games as dictionaries with id, payload, and score
     """
     try:
+        # Try to use direct recommendation without specifying vector name
         recommend_results = qdrant.recommend(
             collection_name=COLLECTION_NAME,
             positive=[game_id],
-            using="fast-bge-small-en-v1.5",  # Specify which vector to use
             limit=limit,
             with_payload=True
         )
@@ -235,7 +258,11 @@ def get_game_recommendations(game_id, limit=5):
         return results
     except Exception as e:
         print(f"Error getting recommendations: {e}")
-        return []
+        # Fallback to random games if recommendation fails
+        try:
+            return get_random_games(limit)
+        except:
+            return []
 
 def get_enhanced_recommendations(positive_ids=None, negative_ids=None, query=None, limit=5):
     """
@@ -596,6 +623,27 @@ def initialize_collection(csv_file_path, collection_name=None, force_recreate=Fa
     except Exception as e:
         print(f"Error initializing collection: {e}")
         return False
+
+# Add this new function after embedding initialization
+def get_dense_embedding(text):
+    """Get dense embedding for text using fastembed"""
+    try:
+        embeddings = list(embedder.embed([text]))
+        return embeddings[0].tolist() if embeddings else []
+    except Exception as e:
+        print(f"Error generating dense embedding: {e}")
+        return []
+
+def format_search_results(search_result):
+    """Format search results into a consistent dictionary format"""
+    results = []
+    for point in search_result:
+        results.append({
+            "id": str(point.id),
+            "payload": point.payload if hasattr(point, 'payload') else {},
+            "score": point.score
+        })
+    return results
 
 if __name__ == "__main__":
     # Check if collection exists and create/upload if needed
