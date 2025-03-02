@@ -23,7 +23,9 @@ from search import (
     get_diverse_recommendations,
     get_random_games,
     get_game_by_id,
-    get_steam_game_description
+    get_steam_game_description,
+    get_discovery_games,
+    get_discovery_context
 )
 
 # Configure logging
@@ -69,9 +71,43 @@ async def keepalive_task():
         # Sleep for the specified interval
         await asyncio.sleep(KEEPALIVE_INTERVAL)
 
+# Data initialization task
+async def initialize_data():
+    """Initialize the Qdrant collection with data if it doesn't exist"""
+    try:
+        logger.info("Checking if data initialization is needed...")
+        
+        # Import functions from our upload script
+        from upload_data import check_collection_exists, create_collection, upload_data
+        
+        # Check if collection exists and has data
+        if not check_collection_exists():
+            logger.info("Collection doesn't exist or is empty. Creating and uploading data...")
+            
+            # Create collection
+            if create_collection():
+                logger.info("Collection created successfully.")
+                
+                # Upload data
+                if upload_data():
+                    logger.info("Data uploaded successfully.")
+                else:
+                    logger.error("Failed to upload data.")
+            else:
+                logger.error("Failed to create collection.")
+        else:
+            logger.info("Collection already exists with data. No initialization needed.")
+            
+    except Exception as e:
+        logger.error(f"Data initialization failed: {str(e)}")
+
 # LifeSpan context to start background tasks
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Initialize data when the app starts
+    await initialize_data()
+    logger.info("Data initialization completed")
+    
     # Start the keepalive task when the app starts
     keepalive_task_obj = asyncio.create_task(keepalive_task())
     logger.info("Started keep-alive background task")
@@ -203,6 +239,13 @@ class DiscoveryRequest(BaseModel):
     limit: int = Field(9, description="Maximum number of results to return")
     offset: int = Field(0, description="Number of results to skip (for pagination)")
 
+class DiscoveryPreferencesRequest(BaseModel):
+    liked_ids: Optional[List[str]] = Field(None, description="List of game IDs the user likes")
+    disliked_ids: Optional[List[str]] = Field(None, description="List of game IDs the user dislikes")
+    action: str = Field(..., description="Action to perform: 'like', 'dislike', 'unlike', 'undislike', 'refresh', 'reset'")
+    game_id: Optional[str] = Field(None, description="Game ID for the action (required for like, dislike, unlike, undislike)")
+    limit: int = Field(9, description="Number of games to return in the response")
+
 class DiverseRecommendationRequest(BaseModel):
     seed_id: str = Field(..., description="Steam App ID of the seed game")
     diversity_factor: float = Field(0.5, description="Factor controlling diversity (0=similar, 1=diverse)")
@@ -212,6 +255,12 @@ class DiverseRecommendationRequest(BaseModel):
 class SuggestionRequest(BaseModel):
     query: str = Field(..., description="Partial query text to get suggestions for")
     limit: int = Field(5, description="Maximum number of suggestions to return")
+
+class DiscoveryGamesRequest(BaseModel):
+    positive_ids: Optional[List[str]] = Field(None, description="List of game IDs the user likes")
+    negative_ids: Optional[List[str]] = Field(None, description="List of game IDs the user dislikes")
+    excluded_ids: Optional[List[str]] = Field(None, description="List of game IDs to exclude from results")
+    limit: int = Field(9, description="Maximum number of games to return")
 
 # Custom exception handler
 @app.exception_handler(Exception)
@@ -694,8 +743,160 @@ async def suggest(query: str, limit: int = 5, response: Response = None):
         # For suggestions, we just return empty list on error
         return []
 
+@app.post("/discovery-preferences", response_model=List[RecommendationResponse], tags=["Discovery"])
+async def discovery_preferences(request: DiscoveryPreferencesRequest, response: Response = None):
+    """
+    Handle user preferences for game discovery.
+    This endpoint allows users to like, dislike, unlike, or undislike games,
+    refresh the discovery feed, or reset all preferences.
+    
+    The response always includes a fresh set of games based on updated preferences.
+    """
+    try:
+        # Initialize lists if None
+        liked_ids = request.liked_ids or []
+        disliked_ids = request.disliked_ids or []
+        
+        # Create a list of all IDs to exclude from results (both liked and disliked)
+        excluded_ids = liked_ids + disliked_ids
+        
+        # Handle the requested action
+        if request.action == "like" and request.game_id:
+            # Add to liked list if not already there
+            if request.game_id not in liked_ids:
+                liked_ids.append(request.game_id)
+            # Remove from disliked list if it was there
+            if request.game_id in disliked_ids:
+                disliked_ids.remove(request.game_id)
+                
+        elif request.action == "dislike" and request.game_id:
+            # Add to disliked list if not already there
+            if request.game_id not in disliked_ids:
+                disliked_ids.append(request.game_id)
+            # Remove from liked list if it was there
+            if request.game_id in liked_ids:
+                liked_ids.remove(request.game_id)
+                
+        elif request.action == "unlike" and request.game_id:
+            # Remove from liked list
+            if request.game_id in liked_ids:
+                liked_ids.remove(request.game_id)
+                
+        elif request.action == "undislike" and request.game_id:
+            # Remove from disliked list
+            if request.game_id in disliked_ids:
+                disliked_ids.remove(request.game_id)
+                
+        elif request.action == "reset":
+            # Clear all preferences
+            liked_ids = []
+            disliked_ids = []
+            excluded_ids = []
+        
+        # If action is refresh, we just use the current liked/disliked lists
+        
+        # Get new games based on current preferences
+        if len(liked_ids) > 0:
+            # If we have likes, use them to recommend more games
+            results = get_discovery_games(
+                excluded_ids=excluded_ids,
+                positive_ids=liked_ids,
+                negative_ids=disliked_ids,
+                limit=request.limit
+            )
+        else:
+            # If no likes yet, just get random games excluding any disliked ones
+            results = get_random_games(limit=request.limit, excluded_ids=excluded_ids)
+        
+        # Add cache headers if response is provided
+        if response:
+            add_cache_headers(response, duration_seconds=60)  # Short cache for discovery
+        
+        # Return the results (this will be the new discovery feed)
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error in discovery preferences: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing discovery preferences: {str(e)}")
+
+@app.post("/discovery-games", response_model=List[RecommendationResponse], tags=["Discovery"])
+async def discovery_games(request: DiscoveryGamesRequest, response: Response = None):
+    """
+    Get discovery games based on user preferences
+    
+    Args:
+        request: DiscoveryGamesRequest object with user preferences
+        
+    Returns:
+        List of games based on user preferences
+    """
+    try:
+        # Convert string IDs to integers if needed
+        positive_ids = [int(id) if isinstance(id, str) and id.isdigit() else id for id in request.positive_ids] if request.positive_ids else None
+        negative_ids = [int(id) if isinstance(id, str) and id.isdigit() else id for id in request.negative_ids] if request.negative_ids else None
+        excluded_ids = [int(id) if isinstance(id, str) and id.isdigit() else id for id in request.excluded_ids] if request.excluded_ids else None
+        
+        # Get discovery games
+        results = get_discovery_games(
+            positive_ids=positive_ids,
+            negative_ids=negative_ids,
+            excluded_ids=excluded_ids,
+            limit=request.limit
+        )
+        
+        # Add cache headers if response is provided
+        if response:
+            add_cache_headers(response, duration_seconds=60)  # Short cache for discovery
+            
+        return results
+    except Exception as e:
+        logger.error(f"Error in discovery games: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting discovery games: {str(e)}")
+
+@app.get("/discovery-context/{game_id}", response_model=List[RecommendationResponse], tags=["Discovery"])
+async def discovery_context(
+    game_id: str,
+    limit: int = Query(9, ge=1, le=50),
+    excluded_ids: Optional[str] = Query(None),
+    response: Response = None
+):
+    """
+    Get discovery games based on a specific game context
+    
+    Args:
+        game_id: ID of the game to use as context
+        limit: Number of games to return
+        excluded_ids: Comma-separated list of game IDs to exclude
+        
+    Returns:
+        List of games similar to the specified game
+    """
+    try:
+        # Parse excluded IDs
+        excluded_ids_list = None
+        if excluded_ids:
+            excluded_ids_list = [int(id) if id.isdigit() else id for id in excluded_ids.split(",")]
+        
+        # Convert game_id to integer if it's a digit
+        if isinstance(game_id, str) and game_id.isdigit():
+            game_id = int(game_id)
+            
+        # Get discovery context
+        results = get_discovery_context(
+            game_id=game_id,
+            limit=limit,
+            excluded_ids=excluded_ids_list
+        )
+        
+        # Add cache headers if response is provided
+        if response:
+            add_cache_headers(response, duration_seconds=300)  # 5 minute cache for context
+            
+        return results
+    except Exception as e:
+        logger.error(f"Error in discovery context: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting discovery context: {str(e)}")
+
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Query, Body
 import httpx
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 BACKEND_URL = "https://fastapi-5aw3.onrender.com"
 
@@ -220,3 +220,166 @@ async def get_game(game_id: str):
 @app.get("/api/py/helloFastApi")
 async def hello_fast_api():
     return {"message": "Hello from FastAPI"}
+
+@app.post("/api/py/discovery-preferences")
+async def discovery_preferences(
+    liked_ids: Optional[List[str]] = Body(None), 
+    disliked_ids: Optional[List[str]] = Body(None),
+    action: str = Body(...),
+    game_id: Optional[str] = Body(None),
+    limit: int = Body(9)
+):
+    """
+    Handle user preferences for game discovery.
+    
+    This endpoint allows users to:
+    - Like or dislike games
+    - Remove likes or dislikes
+    - Refresh the discovery feed
+    - Reset all preferences
+    
+    Args:
+        liked_ids: List of game IDs the user has liked
+        disliked_ids: List of game IDs the user has disliked
+        action: Action to perform (like, dislike, unlike, undislike, refresh, reset)
+        game_id: Game ID for the action (required for like, dislike, unlike, undislike)
+        limit: Number of games to return in the response
+    
+    Returns:
+        A fresh set of games based on updated preferences
+    """
+    try:
+        # Validate the action
+        valid_actions = ["like", "dislike", "unlike", "undislike", "refresh", "reset"]
+        if action not in valid_actions:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid action: {action}. Must be one of: {', '.join(valid_actions)}"
+            )
+        
+        # Validate game_id is provided when needed
+        if action in ["like", "dislike", "unlike", "undislike"] and not game_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Game ID is required for action: {action}"
+            )
+        
+        # Prepare the request payload
+        payload = {
+            "liked_ids": liked_ids or [],
+            "disliked_ids": disliked_ids or [],
+            "action": action,
+            "game_id": game_id,
+            "limit": limit
+        }
+        
+        # Make the request to the backend
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{BACKEND_URL}/discovery-preferences",
+                json=payload
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Backend API error: {response.text}"
+                )
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=500, detail=f"HTTP error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.post("/api/py/discovery-games")
+async def discovery_games(
+    positive_ids: Optional[List[str]] = Body(None),
+    negative_ids: Optional[List[str]] = Body(None),
+    excluded_ids: Optional[List[str]] = Body(None),
+    limit: int = Body(9)
+):
+    """
+    Get discovery games based on user preferences
+    
+    Args:
+        positive_ids: List of game IDs the user has liked
+        negative_ids: List of game IDs the user has disliked
+        excluded_ids: List of game IDs to exclude from results
+        limit: Number of games to return
+        
+    Returns:
+        List of games based on user preferences
+    """
+    try:
+        # Prepare the request payload
+        payload = {
+            "positive_ids": positive_ids or [],
+            "negative_ids": negative_ids or [],
+            "excluded_ids": excluded_ids or [],
+            "limit": limit
+        }
+        
+        # Make the request to the backend
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{BACKEND_URL}/discovery-games",
+                json=payload
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Backend API error: {response.text}"
+                )
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=500, detail=f"HTTP error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.get("/api/py/discovery-context/{game_id}")
+async def discovery_context(
+    game_id: str,
+    limit: int = Query(9, ge=1, le=50),
+    excluded_ids: Optional[List[str]] = Query(None)
+):
+    """
+    Get discovery games based on a specific game context
+    
+    Args:
+        game_id: ID of the game to use as context
+        limit: Number of games to return
+        excluded_ids: List of game IDs to exclude from results
+        
+    Returns:
+        List of games similar to the specified game
+    """
+    try:
+        # Prepare the query parameters
+        params = {
+            "limit": limit
+        }
+        
+        if excluded_ids:
+            params["excluded_ids"] = ",".join(excluded_ids)
+        
+        # Make the request to the backend
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{BACKEND_URL}/discovery-context/{game_id}",
+                params=params
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Backend API error: {response.text}"
+                )
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=500, detail=f"HTTP error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

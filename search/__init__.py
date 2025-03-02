@@ -15,7 +15,9 @@ from .search import (
     get_random_games,
     get_game_by_id,
     get_steam_game_description,
-    clean_html_description
+    clean_html_description,
+    get_discovery_games,
+    get_discovery_context
 )
 
 # Also expose these directly
@@ -29,5 +31,7 @@ __all__ = [
     "get_random_games",
     "get_game_by_id",
     "get_steam_game_description",
-    "clean_html_description"
+    "clean_html_description",
+    "get_discovery_games",
+    "get_discovery_context"
 ] 
