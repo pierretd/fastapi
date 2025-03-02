@@ -508,23 +508,14 @@ export default function Home() {
             {/* Right Section: Search & Profile */}
             <div className="flex items-center space-x-4">
               {/* Search Button */}
-              <Link 
-                href="/search" 
+              <button 
                 className="glass-effect p-2 rounded-full hover:bg-white/15 transition-colors interactive-element"
                 aria-label="Search"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-              </Link>
-              
-              {/* Advanced Search Link */}
-              <Link 
-                href="/advanced-search" 
-                className="glass-effect px-3 py-2 rounded-lg hover:bg-white/15 transition-colors interactive-element text-white/90 text-sm font-medium"
-              >
-                Advanced Search
-              </Link>
+              </button>
               
               {/* Profile Button */}
               <div className="relative">

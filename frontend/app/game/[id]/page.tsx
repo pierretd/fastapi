@@ -19,6 +19,7 @@ interface Game {
   similar_games?: any[];
   relevance?: number;
   imageUrl?: string;
+  error_details?: string;
 }
 
 interface SearchResponse {
@@ -60,17 +61,31 @@ export default function GameDetails() {
       setError('');
       
       try {
+        console.log('Fetching game details for:', gameId);
         // Try first to fetch the game directly from the game endpoint
         const gameResponse = await fetch(`/api/py/game/${gameId}`);
         
         if (gameResponse.ok) {
           const gameData = await gameResponse.json();
+          console.log('Game data received:', gameData);
+          
+          // Check if we got a fallback response (error from backend)
+          if (gameData.name === "Game Information Unavailable") {
+            console.warn('Received fallback game data from API');
+            const errorDetails = gameData.error_details || 'Unknown error';
+            console.warn('Error details from API:', errorDetails);
+            setError(`Unable to load complete game details: ${errorDetails}`);
+          }
           
           // Enhance description if needed
           enhanceGameDescription(gameData);
           
           setGame(gameData);
         } else {
+          console.error('Failed to fetch game data:', gameResponse.status, gameResponse.statusText);
+          const errorText = await gameResponse.text().catch(() => 'No error details available');
+          console.error('Error details:', errorText);
+          
           // Fall back to search if direct game fetch fails
           const response = await fetch('/api/py/search', {
             method: 'POST',
@@ -84,13 +99,16 @@ export default function GameDetails() {
           });
           
           if (!response.ok) {
-            throw new Error(`Error fetching game details: ${response.statusText}`);
+            const searchErrorText = await response.text().catch(() => 'No error details available');
+            console.error('Search fallback failed:', response.status, response.statusText, searchErrorText);
+            throw new Error(`Error fetching game details: ${response.status} ${response.statusText}`);
           }
           
           const data: SearchResponse = await response.json();
           const foundGame = data.items?.find((g: Game) => g.id.toString() === gameId);
           
           if (!foundGame) {
+            console.error('Game not found in search results');
             throw new Error('Game not found');
           }
           
@@ -104,20 +122,34 @@ export default function GameDetails() {
         const recResponse = await fetch(`/api/py/recommend/${gameId}?limit=6`);
         
         if (!recResponse.ok) {
-          throw new Error(`Error fetching recommendations: ${recResponse.statusText}`);
+          console.warn('Failed to fetch recommendations:', recResponse.status, recResponse.statusText);
+          // Don't throw here, just set empty recommendations
+          setRecommendations([]);
+        } else {
+          const recData: RecommendationResponse = await recResponse.json();
+          
+          // Enhance descriptions for recommendations
+          if (recData.items) {
+            recData.items.forEach(game => enhanceGameDescription(game));
+          }
+          
+          setRecommendations(recData.items || []);
         }
-        
-        const recData: RecommendationResponse = await recResponse.json();
-        
-        // Enhance descriptions for recommendations
-        if (recData.items) {
-          recData.items.forEach(game => enhanceGameDescription(game));
-        }
-        
-        setRecommendations(recData.items || []);
       } catch (err) {
         console.error('Error fetching game data:', err);
-        setError(err instanceof Error ? err.message : String(err));
+        let errorMessage = 'An error occurred while loading the game';
+        
+        if (err instanceof Error) {
+          errorMessage = `${errorMessage}: ${err.message}`;
+          console.error('Error stack:', err.stack);
+        } else if (typeof err === 'string') {
+          errorMessage = `${errorMessage}: ${err}`;
+        } else {
+          errorMessage = `${errorMessage}. Please try again later.`;
+          console.error('Unknown error type:', typeof err, err);
+        }
+        
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -181,14 +213,28 @@ export default function GameDetails() {
             &larr; Back to Home
           </Link>
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-            <h1 className="text-xl text-red-600 mb-2">Error</h1>
-            <p>{error}</p>
-            <button 
-              onClick={() => router.back()} 
-              className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-            >
-              Go Back
-            </button>
+            <h1 className="text-xl text-red-600 mb-2">Error Loading Game</h1>
+            <p className="mb-4">{error}</p>
+            <div className="flex justify-center gap-4">
+              <button 
+                onClick={() => window.location.reload()} 
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+              >
+                Try Again
+              </button>
+              <button 
+                onClick={() => router.back()} 
+                className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+              >
+                Go Back
+              </button>
+            </div>
+            {game && game.name === "Game Information Unavailable" && (
+              <div className="mt-6 p-4 bg-white rounded-lg">
+                <h2 className="text-lg font-medium mb-2">Technical Details</h2>
+                <p className="text-sm text-gray-600">{game.error_details || 'No additional details available'}</p>
+              </div>
+            )}
           </div>
         </div>
       </main>

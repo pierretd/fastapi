@@ -3,7 +3,8 @@ import httpx
 import os
 from typing import Optional, Dict, Any, List
 
-BACKEND_URL = "https://fastapi-5aw3.onrender.com"
+# Use environment variable for backend URL with fallback to local development URL
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 ### Create FastAPI instance with custom docs and openapi url
 app = FastAPI(docs_url="/api/py/docs", openapi_url="/api/py/openapi.json")
@@ -158,64 +159,100 @@ async def get_game(game_id: str):
     
     try:
         # Attempt to get game data from the backend
+        backend_url = f"{BACKEND_URL}/game/{base_game_id}"
+        print(f"Attempting to fetch game data from {backend_url}")
+        
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(f"{BACKEND_URL}/games/{base_game_id}")
-            response.raise_for_status()
-            game_data = response.json()
-            
-            # If we have an embedded description from the ID, use it
-            if embedded_description:
-                # Store the embedded description in a special field
-                game_data["embedded_description"] = embedded_description
+            try:
+                response = await client.get(backend_url)
+                print(f"Response status: {response.status_code}")
                 
-                # Only use it as the main description if the current ones are generic/missing
-                if not game_data.get("short_description") or len(game_data.get("short_description", "")) < 20:
-                    game_data["short_description"] = embedded_description
-            
-            # Only add a fallback description if we don't have any good description
-            elif (not game_data.get("short_description") or len(game_data.get("short_description", "")) < 20) and \
-                 (not game_data.get("detailed_description") or len(game_data.get("detailed_description", "")) < 20):
-                # Create a minimal description that doesn't follow the problematic pattern
-                game_name = game_data.get("name", "This game")
-                dev_info = f" by {game_data.get('developers', 'indie developers')}" if game_data.get("developers") else ""
-                
-                if game_data.get("genres") and game_data.get("tags"):
-                    # Select at most 2 genres and tags for a cleaner description
-                    genres = game_data.get("genres", "").split(',')[:2]
-                    tags = game_data.get("tags", "").split(',')[:2]
+                if response.status_code == 200:
+                    game_data = response.json()
+                    print(f"Successfully retrieved game data for {base_game_id}")
                     
-                    genre_text = " and ".join(genres) if len(genres) <= 2 else f"{genres[0]} and more"
-                    tag_text = " and ".join(tags) if len(tags) <= 2 else f"{tags[0]} and more"
+                    # If we have an embedded description from the ID, use it
+                    if embedded_description:
+                        # Store the embedded description in a special field
+                        game_data["embedded_description"] = embedded_description
+                        
+                        # Only use it as the main description if the current ones are generic/missing
+                        if not game_data.get("short_description") or len(game_data.get("short_description", "")) < 20:
+                            game_data["short_description"] = embedded_description
                     
-                    game_data["short_description"] = f"{game_name}{dev_info} offers {genre_text} gameplay with {tag_text} elements."
+                    # Only add a fallback description if we don't have any good description
+                    elif (not game_data.get("short_description") or len(game_data.get("short_description", "")) < 20) and \
+                         (not game_data.get("detailed_description") or len(game_data.get("detailed_description", "")) < 20):
+                        # Create a minimal description that doesn't follow the problematic pattern
+                        game_name = game_data.get("name", "This game")
+                        dev_info = f" by {game_data.get('developers', 'indie developers')}" if game_data.get("developers") else ""
+                        
+                        if game_data.get("genres") and game_data.get("tags"):
+                            # Select at most 2 genres and tags for a cleaner description
+                            genres = game_data.get("genres", "").split(',')[:2]
+                            tags = game_data.get("tags", "").split(',')[:2]
+                            
+                            genre_text = " and ".join(genres) if len(genres) <= 2 else f"{genres[0]} and more"
+                            tag_text = " and ".join(tags) if len(tags) <= 2 else f"{tags[0]} and more"
+                            
+                            game_data["short_description"] = f"{game_name}{dev_info} offers {genre_text} gameplay with {tag_text} elements."
+                        else:
+                            game_data["short_description"] = f"{game_name}{dev_info}. More information coming soon."
+                    
+                    return game_data
                 else:
-                    game_data["short_description"] = f"{game_name}{dev_info}. More information coming soon."
-        
-        return game_data
+                    error_text = await response.text()
+                    print(f"Backend error: Status {response.status_code}, Response: {error_text[:200]}")
+                    
+                    # Create a more detailed error message
+                    error_detail = f"Backend returned status {response.status_code}"
+                    if error_text:
+                        try:
+                            error_json = response.json()
+                            if "detail" in error_json:
+                                error_detail += f": {error_json['detail']}"
+                        except:
+                            error_detail += f": {error_text[:100]}"
+                    
+                    # Return a fallback response with error information
+                    return create_fallback_response(game_id, embedded_description, error_detail)
+                    
+            except httpx.TimeoutException as e:
+                print(f"Timeout error fetching game {game_id}: {str(e)}")
+                return create_fallback_response(game_id, embedded_description, "Request to game server timed out")
+                
+            except httpx.RequestError as e:
+                print(f"Request error fetching game {game_id}: {str(e)}")
+                return create_fallback_response(game_id, embedded_description, f"Connection error: {str(e)}")
     
-    except (httpx.RequestError, httpx.HTTPStatusError) as e:
-        # If we fail to get the game, return a fallback response
-        print(f"Error fetching game {game_id}: {str(e)}")
+    except Exception as e:
+        # Catch any other unexpected errors
+        print(f"Unexpected error in get_game for {game_id}: {type(e).__name__}, {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return create_fallback_response(game_id, embedded_description, f"Server error: {type(e).__name__}")
+
+def create_fallback_response(game_id: str, embedded_description: str = None, error_message: str = None):
+    """Create a fallback response when game data cannot be retrieved"""
+    fallback_response = {
+        "id": game_id,
+        "name": "Game Information Unavailable",
+        "header_image": "/placeholder.jpg",
+        "screenshots": [],
+        "developers": "",
+        "publishers": "",
+        "genres": "",
+        "tags": "",
+        "error_details": error_message or "Unknown error occurred"
+    }
+    
+    if embedded_description:
+        fallback_response["short_description"] = embedded_description
+        fallback_response["embedded_description"] = embedded_description
+    else:
+        fallback_response["short_description"] = "We're having trouble loading this game's information. Please try again later."
         
-        # If we have an embedded description, use it in the fallback
-        fallback_response = {
-            "id": game_id,
-            "name": "Game Information Unavailable",
-            "header_image": "/placeholder.jpg",
-            "screenshots": [],
-            "developers": "",
-            "publishers": "",
-            "genres": "",
-            "tags": ""
-        }
-        
-        if embedded_description:
-            fallback_response["short_description"] = embedded_description
-            fallback_response["embedded_description"] = embedded_description
-        else:
-            fallback_response["short_description"] = "We're having trouble loading this game's information. Please try again later."
-            
-        return fallback_response
+    return fallback_response
 
 @app.get("/api/py/helloFastApi")
 async def hello_fast_api():
@@ -383,3 +420,24 @@ async def discovery_context(
         raise HTTPException(status_code=500, detail=f"HTTP error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.get("/api/py/test")
+async def test():
+    """Simple test endpoint to check if the API is working"""
+    return {"status": "ok", "message": "API is working"}
+
+@app.get("/api/py/test-backend")
+async def test_backend():
+    """Test endpoint to check if the backend connection is working"""
+    try:
+        print("Testing backend connection...")
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{BACKEND_URL}/health")
+            print(f"Backend health response: {response.status_code}")
+            if response.status_code == 200:
+                return {"status": "ok", "backend_status": response.json()}
+            else:
+                return {"status": "error", "message": f"Backend returned status {response.status_code}"}
+    except Exception as e:
+        print(f"Error testing backend connection: {str(e)}")
+        return {"status": "error", "message": str(e)}

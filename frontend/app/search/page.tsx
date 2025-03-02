@@ -93,9 +93,6 @@ export default function Search() {
             <Link href="/" className="text-blue-500 hover:underline">
               &larr; Back to Home
             </Link>
-            <Link href="/advanced-search" className="text-blue-500 hover:underline">
-              Advanced Search Options &rarr;
-            </Link>
           </div>
           
           {/* Search Form */}

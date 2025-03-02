@@ -9,8 +9,6 @@ from qdrant_client import QdrantClient
 from fastembed import TextEmbedding
 from fastembed.sparse import SparseTextEmbedding
 from qdrant_client.models import SparseVector
-# Using the original search module from the search directory (via __init__.py)
-import search
 
 # Load environment variables
 load_dotenv()
@@ -143,18 +141,4 @@ if __name__ == "__main__":
         print(f"Error checking collection: {e}")
     
     # Run search tests
-    test_search_queries()
-
-# Test the search function with sparse vectors enabled
-results = search.search_games(
-    query="adventure",
-    limit=5,
-    use_hybrid=False,
-    use_sparse=True,
-    use_dense=False
-)
-
-# Print the results
-print("Results:", len(results))
-for i, result in enumerate(results):
-    print(f"{i+1}. {result['id']} - {result['payload'].get('name', 'Unknown')} (Score: {result['score']})") 
+    test_search_queries() 

@@ -18,16 +18,42 @@ import time
 import requests
 import sys
 from datetime import datetime
+import asyncio
+import aiohttp
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
+    format='%(levelname)s:%(name)s:%(message)s'
 )
-logger = logging.getLogger('keep-alive')
+logger = logging.getLogger('main')
+
+# Get the API host from environment or default to localhost
+is_render = os.getenv("RENDER", "false").lower() == "true"
+port = os.getenv("PORT", "8000")  # Use the same port defined in .env
+
+# If running on Render, use localhost with the correct port
+if is_render:
+    # On Render, services are available internally at localhost with the assigned PORT
+    api_host = f"http://localhost:{port}"
+else:
+    # For local development or other environments
+    api_host = os.getenv("API_HOST", f"http://localhost:{port}")
+
+# URL to ping (health endpoint)
+health_url = f"{api_host}/health"
+logger.info(f"Keep-alive will ping: {health_url}")
+
+# Add randomization to avoid all instances pinging at exactly the same time
+jitter = 10  # seconds of random jitter
+
+# Keep-alive interval in seconds (default: 4 minutes - less than Render's 5 min timeout)
+interval = int(os.getenv("KEEPALIVE_INTERVAL", "240"))
 
 def ping_server(url):
     """Ping the server and return the response status."""
@@ -43,10 +69,10 @@ def ping_server(url):
 
 def main():
     parser = argparse.ArgumentParser(description='Keep-alive script for Steam Games Search API')
-    parser.add_argument('--url', type=str, default='http://localhost:8000/health',
-                        help='URL to ping (default: http://localhost:8000/health)')
-    parser.add_argument('--interval', type=int, default=240,
-                        help='Ping interval in seconds (default: 240 seconds)')
+    parser.add_argument('--url', type=str, default=health_url,
+                        help=f'URL to ping (default: {health_url})')
+    parser.add_argument('--interval', type=int, default=interval,
+                        help=f'Ping interval in seconds (default: {interval} seconds)')
     
     args = parser.parse_args()
     

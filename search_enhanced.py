@@ -44,15 +44,6 @@ SPARSE_VECTOR_NAME = qdrant.get_sparse_vector_field_name()
 # Initialize embedder for compatibility with existing code
 embedder = TextEmbedding(EMBEDDING_MODEL)
 
-# Initialize sparse embedder
-try:
-    from fastembed.sparse import SparseTextEmbedding
-    sparse_embedder = SparseTextEmbedding(SPARSE_MODEL)
-    print(f"Initialized sparse embedder with model: {SPARSE_MODEL}")
-except Exception as e:
-    print(f"Warning: Could not initialize sparse embedder: {e}")
-    sparse_embedder = None
-
 @lru_cache(maxsize=10000)
 def get_steam_game_description(app_id):
     url = f"https://store.steampowered.com/api/appdetails?appids={app_id}"
@@ -168,107 +159,118 @@ def upload_data_to_qdrant():
     
     print("Data successfully uploaded to Qdrant!")
 
-def search_games(query, limit=10, use_hybrid=True, use_sparse=False, use_dense=False, filter_params=None):
+def search_games(query, limit=12, use_hybrid=True, use_sparse=False, use_dense=False, filter_params=None):
     """
-    Search for games using a text query and multiple approaches based on the specified flags.
+    Search for games using different vector search methods.
     
     Args:
-        query (str): The search query text
-        limit (int): Maximum number of results to return
-        use_hybrid (bool): Whether to use hybrid search (dense + sparse)
-        use_sparse (bool): Whether to use sparse-only search
-        use_dense (bool): Whether to use dense-only search
-        filter_params (dict, optional): Additional filters to apply to the search
+        query (str): The search query
+        limit (int): Number of results to return
+        use_hybrid (bool): Whether to use hybrid search (dense + sparse vectors)
+        use_sparse (bool): Whether to use only sparse vector search
+        use_dense (bool): Whether to use only dense vector search
+        filter_params (dict, optional): Additional filtering parameters
         
     Returns:
-        list: Search results as dictionaries containing 'id', 'payload', and 'score'
+        dict: Search results with pagination info
     """
+    print(f"DEBUG: search_games called with use_hybrid={use_hybrid}, use_sparse={use_sparse}, use_dense={use_dense}")
     try:
-        # Debug print to help troubleshoot search modes
-        print(f"DEBUG: search_games called with use_hybrid={use_hybrid}, use_sparse={use_sparse}, use_dense={use_dense}")
+        # If query is empty, return random games
+        if not query or not query.strip():
+            random_games = get_random_games(limit=limit)
+            return random_games
         
-        # Ensure at least one search mode is enabled
-        if not (use_hybrid or use_sparse or use_dense):
-            print("No search mode specified, defaulting to hybrid search")
-            use_hybrid = True
-        
-        # Generate dense embedding
-        dense_vector = None
-        try:
-            if use_dense or use_hybrid:
-                embeddings = list(embedder.embed([query]))
-                if embeddings and len(embeddings) > 0:
-                    dense_vector = embeddings[0].tolist()
-        except Exception as e:
-            print(f"Error generating dense embeddings: {e}")
-            if use_dense and not use_sparse:
-                # If only dense search was requested but vector generation failed, return empty results
-                return []
-        
-        # Generate sparse embedding if needed
-        sparse_vector = None
-        if use_sparse or use_hybrid:
-            try:
-                sparse_embeddings = list(sparse_embedder.embed([query]))
-                if sparse_embeddings and len(sparse_embeddings) > 0:
-                    sparse_vector = sparse_embeddings[0]
-            except Exception as e:
-                print(f"Error generating sparse embeddings: {e}")
-                if use_sparse and not use_dense:
-                    # If only sparse search was requested but vector generation failed, return empty results
-                    return []
-        
-        # Setup base search parameters
-        search_params = {
-            "collection_name": COLLECTION_NAME,
-            "limit": int(limit),
-            "with_payload": True
-        }
-        
-        # Add filter if provided
+        # Prepare filter if needed
+        query_filter = None
         if filter_params:
-            search_params["filter"] = filter_params
-        
-        # Determine search approach
-        if use_sparse and sparse_vector and not use_hybrid and not use_dense:
-            # Sparse-only search
-            print("Using sparse-only search")
-            search_params["query_vector"] = {"fast-bge-small-en-v1.5": [0] * VECTOR_SIZE}  # Dummy vector 
-            search_params["query_sparse_vector"] = {"fast-sparse-splade_pp_en_v1": sparse_vector}
-        elif use_hybrid and dense_vector and sparse_vector:
-            # Hybrid search (dense + sparse)
-            print("Using hybrid search (dense + sparse)")
-            search_params["query_vector"] = {"fast-bge-small-en-v1.5": dense_vector}
-            search_params["query_sparse_vector"] = {"fast-sparse-splade_pp_en_v1": sparse_vector}
-        elif use_dense and dense_vector:
-            # Dense-only search
-            print("Using dense-only search")
-            search_params["query_vector"] = {"fast-bge-small-en-v1.5": dense_vector}
-        else:
-            # Fallback if no search is possible
-            print("No valid search configuration available - missing embeddings for selected search modes")
-            return []
-        
-        # Execute search
-        try:
-            search_results = qdrant.search(**search_params)
+            filter_conditions = []
             
-            # Convert to dictionaries for consistent format
-            results = []
-            for point in search_results:
-                results.append({
-                    "id": str(point.id),
-                    "payload": point.payload,
-                    "score": point.score
-                })
+            # Add price range filter
+            if filter_params.get('price_range'):
+                filter_conditions.append(
+                    FieldCondition(key="price_range", match=MatchValue(value=filter_params['price_range']))
+                )
                 
-            return results
-        except Exception as e:
-            print(f"Error during search: {e}")
-            return []
+            # Add genre filter
+            if filter_params.get('genre'):
+                filter_conditions.append(
+                    FieldCondition(key="genres", match=MatchValue(value=filter_params['genre']))
+                )
             
+            # Create filter object if we have conditions
+            if filter_conditions:
+                query_filter = Filter(must=filter_conditions)
+        
+        # Determine search method to use
+        # Default to hybrid if no specific method is selected
+        if not (use_hybrid or use_sparse or use_dense):
+            use_hybrid = True
+            
+        # Set search parameters based on selected method
+        search_params = {}
+        
+        if use_sparse:
+            # Sparse vector only search
+            search_params = {
+                'collection_name': COLLECTION_NAME,
+                'query_text': query,
+                'query_filter': query_filter,
+                'limit': limit,
+                'with_payload': True,
+                'search_params': {
+                    'sparse_vector': {
+                        'enabled': True
+                    },
+                    'vector': {
+                        'enabled': False
+                    }
+                }
+            }
+        elif use_dense:
+            # Dense vector only search
+            search_params = {
+                'collection_name': COLLECTION_NAME,
+                'query_text': query,
+                'query_filter': query_filter,
+                'limit': limit,
+                'with_payload': True,
+                'search_params': {
+                    'sparse_vector': {
+                        'enabled': False
+                    },
+                    'vector': {
+                        'enabled': True
+                    }
+                }
+            }
+        else:
+            # Hybrid search (default)
+            search_params = {
+                'collection_name': COLLECTION_NAME,
+                'query_text': query,
+                'query_filter': query_filter,
+                'limit': limit,
+                'with_payload': True
+            }
+            
+        # Use the Qdrant query method for search
+        results = qdrant.query(**search_params)
+        
+        # Format results as dictionaries
+        formatted_results = []
+        for result in results:
+            formatted_results.append({
+                "id": str(result.id),
+                "payload": result.metadata,
+                "score": result.score
+            })
+            
+        return formatted_results
+        
     except Exception as e:
-        print(f"Error during search setup: {e}")
+        print(f"Error during search: {e}")
+        # Return empty result set on error
         return []
 
 def get_game_recommendations(game_id, limit=6):
@@ -735,20 +737,6 @@ def get_discovery_context(game_id, limit=9, excluded_ids=None):
         print(f"Error in context discovery: {e}")
         return get_random_games(limit=limit, excluded_ids=excluded_ids)
 
-# Add a function to identify which module is being used
-def get_module_info():
-    """Return information about this search module"""
-    return {
-        "name": "search_enhanced",
-        "path": __file__,
-        "type": "Enhanced search module with support for sparse and dense vectors",
-        "functions": {
-            "search_games": "Full-featured search with query, limit, use_hybrid, use_sparse, use_dense parameters"
-        }
-    }
-
-# Move this code right after the regular function definitions
-# and before the if __name__ == "__main__" block
 # If this file is run directly, perform a test of the discovery API
 if __name__ == "__main__":
     # Test the discovery API
@@ -778,71 +766,4 @@ if __name__ == "__main__":
         )
         print(f"\nRecommendation-based discovery (positive: {test_game_id}):")
         for i, game in enumerate(recommendation_games):
-            print(f"  {i+1}. {game['payload'].get('name', 'Unknown')}")
-
-# Add missing functions required by main.py
-def get_enhanced_recommendations(positive_ids=None, negative_ids=None, query=None, limit=10, offset=0):
-    """
-    Get enhanced recommendations based on positive and negative examples
-    
-    Args:
-        positive_ids (list): List of game IDs the user likes
-        negative_ids (list): List of game IDs the user dislikes
-        query (str): Optional text query for additional context
-        limit (int): Maximum number of results to return
-        offset (int): Number of results to skip (for pagination)
-        
-    Returns:
-        list: Recommended games
-    """
-    print(f"Enhanced recommendations called with {len(positive_ids or [])} positive IDs and {len(negative_ids or [])} negative IDs")
-    
-    # For now, just use the discovery games function which has similar functionality
-    return get_discovery_games(
-        excluded_ids=None,
-        positive_ids=positive_ids,
-        negative_ids=negative_ids,
-        limit=limit
-    )
-
-def get_discovery_recommendations(liked_ids=None, disliked_ids=None, limit=9, offset=0):
-    """
-    Get discovery recommendations based on liked and disliked games
-    
-    Args:
-        liked_ids (list): List of game IDs the user likes
-        disliked_ids (list): List of game IDs the user dislikes
-        limit (int): Maximum number of results to return
-        offset (int): Number of results to skip (for pagination)
-        
-    Returns:
-        list: Recommended games
-    """
-    print(f"Discovery recommendations called with {len(liked_ids or [])} liked IDs and {len(disliked_ids or [])} disliked IDs")
-    
-    # For now, just use the discovery games function which has similar functionality
-    return get_discovery_games(
-        excluded_ids=disliked_ids,
-        positive_ids=liked_ids,
-        negative_ids=None,
-        limit=limit
-    )
-
-def get_diverse_recommendations(seed_id, diversity_factor=0.5, limit=10, offset=0):
-    """
-    Get diverse recommendations based on a seed game
-    
-    Args:
-        seed_id (str): The seed game ID
-        diversity_factor (float): Factor controlling diversity (0=similar, 1=diverse)
-        limit (int): Maximum number of results to return
-        offset (int): Number of results to skip (for pagination)
-        
-    Returns:
-        list: Diverse recommended games
-    """
-    print(f"Diverse recommendations called with seed ID {seed_id} and diversity factor {diversity_factor}")
-    
-    # For now, just use the regular recommendations function
-    # In a real implementation, we would use the diversity factor to adjust the results
-    return get_game_recommendations(seed_id, limit=limit) 
+            print(f"  {i+1}. {game['payload'].get('name', 'Unknown')}") 

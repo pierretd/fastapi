@@ -159,27 +159,37 @@ def upload_data_to_qdrant():
     
     print("Data successfully uploaded to Qdrant!")
 
-def search_games(query, limit=12, use_hybrid=True, use_sparse=False, use_dense=False, filter_params=None):
+def search_games(query, page=1, page_size=12, exact_name_boost=None, use_hybrid=True, filter_params=None):
     """
-    Search for games using different vector search methods.
+    Search for games using the improved hybrid search approach.
     
     Args:
         query (str): The search query
-        limit (int): Number of results to return
+        page (int): Page number for pagination
+        page_size (int): Number of results per page
+        exact_name_boost (str, optional): Exact game name to boost in results
         use_hybrid (bool): Whether to use hybrid search (dense + sparse vectors)
-        use_sparse (bool): Whether to use only sparse vector search
-        use_dense (bool): Whether to use only dense vector search
         filter_params (dict, optional): Additional filtering parameters
         
     Returns:
         dict: Search results with pagination info
     """
-    print(f"DEBUG: search_games called with use_hybrid={use_hybrid}, use_sparse={use_sparse}, use_dense={use_dense}")
     try:
+        # Calculate pagination parameters
+        offset = (page - 1) * page_size
+        limit = page_size
+        
         # If query is empty, return random games
         if not query or not query.strip():
             random_games = get_random_games(limit=limit)
-            return random_games
+            total = len(random_games)
+            return {
+                "items": random_games,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "pages": math.ceil(total / page_size) if page_size > 0 else 0
+            }
         
         # Prepare filter if needed
         query_filter = None
@@ -202,77 +212,50 @@ def search_games(query, limit=12, use_hybrid=True, use_sparse=False, use_dense=F
             if filter_conditions:
                 query_filter = Filter(must=filter_conditions)
         
-        # Determine search method to use
-        # Default to hybrid if no specific method is selected
-        if not (use_hybrid or use_sparse or use_dense):
-            use_hybrid = True
-            
-        # Set search parameters based on selected method
-        search_params = {}
+        # Use the Qdrant query method for efficient hybrid search
+        results = qdrant.query(
+            collection_name=COLLECTION_NAME,
+            query_text=query,
+            query_filter=query_filter,
+            limit=limit + offset,  # Get more results to allow for pagination
+            with_payload=True
+        )
         
-        if use_sparse:
-            # Sparse vector only search
-            search_params = {
-                'collection_name': COLLECTION_NAME,
-                'query_text': query,
-                'query_filter': query_filter,
-                'limit': limit,
-                'with_payload': True,
-                'search_params': {
-                    'sparse_vector': {
-                        'enabled': True
-                    },
-                    'vector': {
-                        'enabled': False
-                    }
-                }
-            }
-        elif use_dense:
-            # Dense vector only search
-            search_params = {
-                'collection_name': COLLECTION_NAME,
-                'query_text': query,
-                'query_filter': query_filter,
-                'limit': limit,
-                'with_payload': True,
-                'search_params': {
-                    'sparse_vector': {
-                        'enabled': False
-                    },
-                    'vector': {
-                        'enabled': True
-                    }
-                }
-            }
+        # Apply pagination in memory
+        if len(results) > offset:
+            paginated_results = results[offset:offset+limit]
         else:
-            # Hybrid search (default)
-            search_params = {
-                'collection_name': COLLECTION_NAME,
-                'query_text': query,
-                'query_filter': query_filter,
-                'limit': limit,
-                'with_payload': True
-            }
-            
-        # Use the Qdrant query method for search
-        results = qdrant.query(**search_params)
+            paginated_results = []
         
         # Format results as dictionaries
         formatted_results = []
-        for result in results:
+        for result in paginated_results:
             formatted_results.append({
                 "id": str(result.id),
                 "payload": result.metadata,
                 "score": result.score
             })
             
-        return formatted_results
-        
+        # Return with pagination info
+        total = len(results)
+        return {
+            "items": formatted_results,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": math.ceil(total / page_size) if page_size > 0 else 0
+        }
     except Exception as e:
         print(f"Error during search: {e}")
         # Return empty result set on error
-        return []
-
+        return {
+            "items": [],
+            "total": 0,
+            "page": page,
+            "page_size": page_size,
+            "pages": 0
+        }
+        
 def get_game_recommendations(game_id, limit=6):
     """
     Get game recommendations based on a game ID

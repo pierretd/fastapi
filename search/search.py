@@ -254,73 +254,44 @@ def upload_data_to_qdrant():
     
     print("Data successfully uploaded to Qdrant!")
 
-def search_games(query_text, limit=5, use_hybrid=True, use_sparse=False, use_dense=False, filter_params=None):
+def search_games(query_text, limit=5, use_hybrid=True):
     """
-    Search for games using different approaches based on flags.
+    Search for games using sparse, dense, or hybrid approaches.
     
     Args:
         query_text (str): The search query
-        limit (int): Maximum number of results to return
-        use_hybrid (bool): Use hybrid search (dense + sparse)
-        use_sparse (bool): Use sparse vectors only 
-        use_dense (bool): Use dense vectors only
-        filter_params (dict, optional): Additional filter parameters
+        limit (int): Number of results to return
+        use_hybrid (bool): Whether to use hybrid search
         
     Returns:
-        list: List of search results as dicts with 'id', 'payload', and 'score'
+        list: Search results as dictionaries with id, payload, and score
     """
     try:
-        results = []
+        # Generate embedding
+        embeddings = list(embedder.embed([query_text]))
+        vector = embeddings[0].tolist() if embeddings else []
         
-        # Default to hybrid if no specific approach is selected
-        if not use_sparse and not use_dense:
-            use_hybrid = True
-            
-        if use_hybrid:
-            # Use the existing hybrid search approach
-            search_results = hybrid_search(query_text, limit)
-            results = [
-                {"id": result.id, "payload": result.payload, "score": result.score}
-                for result in search_results
-            ]
-        elif use_sparse:
-            # Implement sparse-only search
-            print(f"Using sparse-only search for query: {query_text}")
-            sparse_embedding = list(sparse_embedder.embed([query_text]))[0]
-            sparse_vec = SparseVector(
-                indices=sparse_embedding.indices.tolist(),
-                values=sparse_embedding.values.tolist()
-            )
-            
-            search_results = client.search(
-                collection_name=COLLECTION_NAME,
-                query_sparse_vector=("fast-sparse-splade_pp_en_v1", sparse_vec),
-                limit=limit,
-                with_payload=True
-            )
-            results = [
-                {"id": result.id, "payload": result.payload, "score": result.score}
-                for result in search_results
-            ]
-        elif use_dense:
-            # Implement dense-only search
-            print(f"Using dense-only search for query: {query_text}")
-            dense_embedding = list(dense_embedder.embed([query_text]))[0].tolist()
-            
-            search_results = client.search(
-                collection_name=COLLECTION_NAME,
-                query_vector=("fast-bge-small-en-v1.5", dense_embedding),
-                limit=limit,
-                with_payload=True
-            )
-            results = [
-                {"id": result.id, "payload": result.payload, "score": result.score}
-                for result in search_results
-            ]
+        # With latest qdrant-client, we can use named vectors directly
+        search_results = qdrant.search(
+            collection_name=COLLECTION_NAME,
+            query_vector=("fast-bge-small-en-v1.5", vector),
+            limit=int(limit),  # Ensure limit is an integer
+            with_payload=True
+            # Removed timeout parameter as it was causing conversion issues
+        )
+        
+        # Convert to dictionaries for consistent format
+        results = []
+        for point in search_results:
+            results.append({
+                "id": str(point.id),
+                "payload": point.payload,  # Latest version always has payload
+                "score": point.score
+            })
         
         return results
     except Exception as e:
-        print(f"Error in search_games: {e}")
+        print(f"Error during search: {e}")
         return []
 
 def get_game_recommendations(game_id, limit=5):
