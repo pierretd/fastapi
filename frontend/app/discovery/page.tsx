@@ -13,11 +13,47 @@ export default function DiscoveryPage() {
   useEffect(() => {
     const fetchInitialGames = async () => {
       try {
-        const response = await fetch('/api/py/random-games?limit=9');
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const refreshParam = urlParams.get('refresh');
+        
+        console.log(`Discovery page loading with refresh param: ${refreshParam}`);
+        
+        // Generate a unique random seed
+        const timestamp = new Date().getTime();
+        const randomFactor = Math.random().toString().substring(2, 10);
+        const randomSeed = parseInt(timestamp.toString() + randomFactor.substring(0, 4), 10) % 1000000000;
+        const nonce = Math.random().toString(36).substring(2, 15);
+        
+        console.log(`Using random seed: ${randomSeed} for initial discovery page load`);
+        
+        // Use discovery-preferences instead of random-games to get better randomization
+        const response = await fetch(`/api/py/discovery-preferences?nocache=${timestamp}-${nonce}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          },
+          body: JSON.stringify({
+            liked_ids: [],
+            disliked_ids: [],
+            action: 'refresh',
+            game_id: '',
+            limit: 9,
+            randomize: randomSeed,
+            _cache_buster: `${timestamp}-${nonce}`
+          }),
+          cache: 'no-store',
+          next: { revalidate: 0 }
+        });
+        
         if (!response.ok) {
           throw new Error(`Error: ${response.status}`);
         }
         const data = await response.json();
+        console.log(`Got ${data.length} games from discovery API, first few IDs: ${data.slice(0, 3).map(g => g.id).join(', ')}`);
         setInitialGames(data);
       } catch (error) {
         console.error('Failed to fetch initial games:', error);
@@ -30,7 +66,7 @@ export default function DiscoveryPage() {
   }, []);
   
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-4 sm:p-6 md:p-12">
+    <main className="flex min-h-screen flex-col items-center justify-between p-1 sm:p-2 md:p-4">
       {/* Navigation Bar */}
       <nav className="w-full max-w-7xl flex items-center justify-between mb-8">
         <Link href="/" className="flex items-center gap-2">
@@ -75,7 +111,7 @@ export default function DiscoveryPage() {
           Powered by semantic search using Qdrant vector database and FastEmbed.
         </p>
         <p className="mt-2">
-          Discover new games based on your preferences. Like games you enjoy, dislike ones you don't.
+          Discover new games based on your preferences. Like games you enjoy, dislike ones you do not.
         </p>
       </footer>
     </main>

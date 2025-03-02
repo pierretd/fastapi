@@ -82,16 +82,45 @@ export default function Home() {
     setRefreshing(true);
     
     try {
-      const response = await fetch(`/api/py/random-games?limit=9`);
+      // Generate a unique random seed
+      const timestamp = new Date().getTime();
+      const randomFactor = Math.random().toString().substring(2, 10);
+      const randomSeed = parseInt(timestamp.toString() + randomFactor.substring(0, 4), 10) % 1000000000;
+      const nonce = Math.random().toString(36).substring(2, 15);
+      
+      console.log(`Home page: Using random seed: ${randomSeed} for game discovery`);
+      
+      // Use discovery-preferences instead of random-games for better randomization
+      const response = await fetch(`/api/py/discovery-preferences?nocache=${timestamp}-${nonce}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        },
+        body: JSON.stringify({
+          liked_ids: [],
+          disliked_ids: [],
+          action: 'refresh',
+          game_id: '',
+          limit: 9,
+          randomize: randomSeed,
+          _cache_buster: `${timestamp}-${nonce}`
+        }),
+        cache: 'no-store',
+        next: { revalidate: 0 }
+      });
       
       if (!response.ok) {
         throw new Error(`Error: ${response.status} ${response.statusText}`);
       }
       
-      const apiGames: ApiGame[] = await response.json();
+      const data = await response.json();
+      console.log(`Home page: Got ${data.length} games from discovery API, first few IDs: ${data.slice(0, 3).map((g: ApiGame) => g.id).join(', ')}`);
       
       // Process the games
-      const processedGames = processApiGames(apiGames);
+      const processedGames = processApiGames(data);
       
       setGames(processedGames);
     } catch (err) {
@@ -103,26 +132,46 @@ export default function Home() {
     }
   }, []);
 
-  // Load liked and disliked games from local storage
+  // Fetch games on component mount
   useEffect(() => {
-    try {
-      const storedLikedGames = localStorage.getItem('likedGames');
-      const storedDislikedGames = localStorage.getItem('dislikedGames');
-      
-      if (storedLikedGames) {
-        setLikedGames(JSON.parse(storedLikedGames));
-      }
-      
-      if (storedDislikedGames) {
-        setDislikedGames(JSON.parse(storedDislikedGames));
-      }
-    } catch (error) {
-      console.error('Error loading game history:', error);
+    // Load liked/disliked games from localStorage first
+    loadLikedGames();
+    loadDislikedGames();
+    
+    // Extract random value from URL if present
+    const urlParams = new URLSearchParams(window.location.search);
+    const randomParam = urlParams.get('random');
+    
+    if (randomParam) {
+      console.log(`Home page: Loading with random parameter: ${randomParam}`);
     }
     
     // Call fetchRandomGames directly here as component mounts
     fetchRandomGames();
   }, [fetchRandomGames]);
+
+  // Load liked and disliked games from local storage
+  const loadLikedGames = () => {
+    try {
+      const storedLikedGames = localStorage.getItem('likedGames');
+      if (storedLikedGames) {
+        setLikedGames(JSON.parse(storedLikedGames));
+      }
+    } catch (error) {
+      console.error('Error loading liked games:', error);
+    }
+  };
+
+  const loadDislikedGames = () => {
+    try {
+      const storedDislikedGames = localStorage.getItem('dislikedGames');
+      if (storedDislikedGames) {
+        setDislikedGames(JSON.parse(storedDislikedGames));
+      }
+    } catch (error) {
+      console.error('Error loading disliked games:', error);
+    }
+  };
 
   // Save liked games to local storage whenever they change
   useEffect(() => {
@@ -164,28 +213,44 @@ export default function Home() {
     setError('');
     
     try {
-      const payload = {
-        liked_games: liked,
-        disliked_games: disliked,
-        limit: 9
-      };
+      // Generate a unique random seed for recommendations too
+      const timestamp = new Date().getTime();
+      const randomFactor = Math.random().toString().substring(2, 10);
+      const randomSeed = parseInt(timestamp.toString() + randomFactor.substring(0, 4), 10) % 1000000000;
+      const nonce = Math.random().toString(36).substring(2, 15);
       
-      const response = await fetch('/api/py/recommendations', {
+      console.log(`Home page: Using random seed: ${randomSeed} for recommendations with ${liked.length} liked and ${disliked.length} disliked games`);
+      
+      const response = await fetch(`/api/py/discovery-preferences?nocache=${timestamp}-${nonce}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          liked_ids: liked,
+          disliked_ids: disliked,
+          action: 'refresh',
+          game_id: '',
+          limit: 9,
+          randomize: randomSeed,
+          _cache_buster: `${timestamp}-${nonce}`
+        }),
+        cache: 'no-store',
+        next: { revalidate: 0 }
       });
       
       if (!response.ok) {
         throw new Error(`Error: ${response.status} ${response.statusText}`);
       }
       
-      const apiGames: ApiGame[] = await response.json();
+      const data = await response.json();
+      console.log(`Home page: Got ${data.length} recommendation games, first few IDs: ${data.slice(0, 3).map((g: ApiGame) => g.id).join(', ')}`);
       
       // Process the games
-      const processedGames = processApiGames(apiGames);
+      const processedGames = processApiGames(data);
       
       setGames(processedGames);
     } catch (err) {
@@ -391,6 +456,22 @@ export default function Home() {
     };
   }, [games.length]);
 
+  // Function to refresh the game list with new random games
+  const handleRefreshGames = () => {
+    const timestamp = new Date().getTime();
+    const randomNumber1 = Math.floor(Math.random() * 1000000);
+    const randomNumber2 = Math.floor(Math.random() * 1000000);
+    const timestampLastDigits = timestamp % 1000;
+    
+    // Combine multiple factors for a more unique random value
+    const uniqueRandomValue = `${randomNumber1}-${timestampLastDigits}-${randomNumber2}`;
+    
+    console.log(`Home page: Refreshing games with a new random value: ${uniqueRandomValue}`);
+    
+    // Force a complete page reload with the new unique random value
+    window.location.href = `${window.location.pathname}?random=${uniqueRandomValue}`;
+  };
+
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
@@ -427,14 +508,23 @@ export default function Home() {
             {/* Right Section: Search & Profile */}
             <div className="flex items-center space-x-4">
               {/* Search Button */}
-              <button 
+              <Link 
+                href="/search" 
                 className="glass-effect p-2 rounded-full hover:bg-white/15 transition-colors interactive-element"
                 aria-label="Search"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-              </button>
+              </Link>
+              
+              {/* Advanced Search Link */}
+              <Link 
+                href="/advanced-search" 
+                className="glass-effect px-3 py-2 rounded-lg hover:bg-white/15 transition-colors interactive-element text-white/90 text-sm font-medium"
+              >
+                Advanced Search
+              </Link>
               
               {/* Profile Button */}
               <div className="relative">
@@ -496,15 +586,45 @@ export default function Home() {
         {/* Page Title Section */}
         <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between mt-4 mb-4">
           <div className="flex flex-col items-center md:items-start animate-fadeIn">
-            <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-[#3CCBA0] mb-2 animate-pulse-subtle">
-              Game Discovery
-            </h1>
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-[#3CCBA0] animate-pulse-subtle">
+                Game Discovery
+              </h1>
+              <button
+                onClick={handleRefreshGames}
+                className="flex items-center space-x-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
+                title="Get fresh recommendations"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Refresh Games</span>
+              </button>
+              
+              {/* Clear Preferences Button */}
+              {(likedGames.length > 0 || dislikedGames.length > 0) && (
+                <button
+                  onClick={() => {
+                    if (confirm("This will clear all your liked and disliked games. Are you sure?")) {
+                      handleResetHistory();
+                    }
+                  }}
+                  className="flex items-center space-x-1 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-300 hover:text-red-200 rounded-lg transition-colors"
+                  title="Clear all your preferences"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  <span>Clear Preferences</span>
+                </button>
+              )}
+            </div>
             <div className="flex justify-center">
               <div className="h-1.5 w-32 bg-gradient-to-r from-[#3CCBA0] to-[#3B82F6] rounded-full animate-expandWidth"></div>
             </div>
           </div>
           <p className="text-white/90 text-base md:text-xl mt-3 md:mt-0 md:ml-8 max-w-2xl text-center md:text-left font-semibold animate-slideInRight">
-            Discover new games tailored to your preferences.
+            Discover new games tailored to your preferences. Like or dislike games to improve future recommendations.
             <span className="block h-0.5 w-0 md:w-3/4 bg-gradient-to-r from-[#3CCBA0]/0 via-[#3CCBA0]/70 to-[#3CCBA0]/0 mt-1.5 animate-expandWidth"></span>
           </p>
         </div>
@@ -588,7 +708,7 @@ export default function Home() {
                   <div className="text-center px-6 py-6 border border-blue-500/30 bg-blue-500/10 rounded-xl">
                     <p className="text-lg text-blue-200 leading-relaxed">
                       <span className="font-bold text-xl inline-block mb-2">💡 Pro tip:</span><br/>
-                      Try <span className="font-medium">Zen Mode</span> by clicking the toggle button next to the Game Recommendations heading for a cleaner view that focuses purely on game visuals. Just hover over any game to reveal its details.
+                      Hover over any game card to reveal more details about the game. Like or dislike games to receive better personalized recommendations.
                     </p>
                   </div>
                 </div>
@@ -634,6 +754,27 @@ export default function Home() {
                   How it works
                 </span>
               </button>
+              
+              {/* Add Clear Preferences button */}
+              {(likedGames.length > 0 || dislikedGames.length > 0) && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm("This will clear all your liked and disliked games. Are you sure?")) {
+                      handleResetHistory();
+                    }
+                  }}
+                  className="mr-2 text-xs text-red-400 hover:text-red-300 bg-red-500/10 px-2 py-0.5 rounded hover:bg-red-500/20 transition-colors"
+                >
+                  <span className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    Clear Preferences
+                  </span>
+                </button>
+              )}
+              
               <button className="p-1 rounded-full hover:bg-white/10 transition-colors">
                 {likesDislikesExpanded ? (
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-white/70">
@@ -751,21 +892,6 @@ export default function Home() {
               <div className="flex flex-col md:flex-row md:items-center flex-1">
                 <div className="flex items-center">
                   <h3 className="text-white font-semibold text-base md:text-lg md:mr-4">Game Recommendations</h3>
-                  
-                  {/* Zen Mode Toggle - Moved here */}
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setZenMode(!zenMode);
-                    }}
-                    className={`ml-3 p-1.5 rounded-lg ${zenMode ? 'bg-purple-500/20 text-purple-300' : 'bg-white/5 text-white/70'} hover:bg-white/10 transition-colors flex items-center gap-1.5`}
-                    title={zenMode ? "Exit Zen Mode" : "Enter Zen Mode"}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
-                      <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59z" />
-                    </svg>
-                    <span className="text-xs hidden sm:inline">Zen Mode</span>
-                  </button>
                 </div>
                 
                 <div className="flex items-center">
@@ -820,7 +946,7 @@ export default function Home() {
                   <h3 className="text-xl font-semibold text-white mb-2">Error Loading Games</h3>
                   <p className="text-white/60 text-sm mb-4 max-w-md">{error}</p>
                   <button
-                    onClick={fetchRandomGames}
+                    onClick={handleRefreshGames}
                     className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
                   >
                     Try Again
@@ -868,7 +994,7 @@ export default function Home() {
                   <h3 className="text-xl font-semibold text-white mb-2">No Games Found</h3>
                   <p className="text-white/60 mb-4 max-w-md">We couldn&apos;t find any games matching your preferences. Try refreshing or adjusting your search criteria.</p>
                   <button
-                    onClick={fetchRandomGames}
+                    onClick={handleRefreshGames}
                     className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
                   >
                     Refresh Games

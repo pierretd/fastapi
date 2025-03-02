@@ -27,7 +27,9 @@ interface SearchResponse {
   pages: number;
 }
 
-export default function Search() {
+type SearchMethod = 'sparse' | 'dense' | 'hybrid';
+
+export default function AdvancedSearch() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Game[]>([]);
   const [totalResults, setTotalResults] = useState(0);
@@ -36,6 +38,7 @@ export default function Search() {
   const [searchPerformed, setSearchPerformed] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
+  const [searchMethod, setSearchMethod] = useState<SearchMethod>('hybrid');
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +58,10 @@ export default function Search() {
         },
         body: JSON.stringify({
           query: query,
-          limit: 10
+          limit: 10,
+          use_hybrid: searchMethod === 'hybrid',
+          use_sparse: searchMethod === 'sparse',
+          use_dense: searchMethod === 'dense'
         })
       });
       
@@ -93,15 +99,55 @@ export default function Search() {
             <Link href="/" className="text-blue-500 hover:underline">
               &larr; Back to Home
             </Link>
-            <Link href="/advanced-search" className="text-blue-500 hover:underline">
-              Advanced Search Options &rarr;
-            </Link>
           </div>
           
           {/* Search Form */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
             <div className="p-6">
-              <h1 className="text-2xl font-bold mb-4">Search Steam Games</h1>
+              <h1 className="text-2xl font-bold mb-4">Advanced Game Search</h1>
+              <div className="mb-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Choose a search method to optimize your results:
+                </p>
+                <div className="flex gap-3 mt-2">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      value="hybrid"
+                      checked={searchMethod === 'hybrid'}
+                      onChange={() => setSearchMethod('hybrid')}
+                      className="h-4 w-4 text-blue-600"
+                    />
+                    <span className="text-sm font-medium">
+                      Hybrid Search <span className="text-xs text-gray-500">(recommended)</span>
+                    </span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      value="dense"
+                      checked={searchMethod === 'dense'}
+                      onChange={() => setSearchMethod('dense')}
+                      className="h-4 w-4 text-blue-600"
+                    />
+                    <span className="text-sm font-medium">
+                      Dense Vector <span className="text-xs text-gray-500">(semantic)</span>
+                    </span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      value="sparse"
+                      checked={searchMethod === 'sparse'}
+                      onChange={() => setSearchMethod('sparse')}
+                      className="h-4 w-4 text-blue-600"
+                    />
+                    <span className="text-sm font-medium">
+                      Sparse Vector <span className="text-xs text-gray-500">(keyword)</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
               <form onSubmit={handleSearch} className="flex gap-2">
                 <input
                   type="text"
@@ -136,7 +182,7 @@ export default function Search() {
               <div className="p-6">
                 <h2 className="text-xl font-semibold mb-4">
                   {totalResults > 0 
-                    ? `Found ${totalResults} games matching "${query}"`
+                    ? `Found ${totalResults} games matching "${query}" using ${searchMethod} search`
                     : `No results found for "${query}"`}
                 </h2>
                 
@@ -193,7 +239,7 @@ export default function Search() {
                   </div>
                 ) : (
                   <p className="text-gray-500 dark:text-gray-400">
-                    Try adjusting your search terms or browse our catalog.
+                    Try adjusting your search terms, selecting a different search method, or browse our catalog.
                   </p>
                 )}
                 

@@ -14,19 +14,9 @@ import logging
 from contextlib import asynccontextmanager
 import httpx
 
-from search import (
-    initialize_collection, 
-    search_games, 
-    get_game_recommendations as recommend_games,
-    get_enhanced_recommendations,
-    get_discovery_recommendations,
-    get_diverse_recommendations,
-    get_random_games,
-    get_game_by_id,
-    get_steam_game_description,
-    get_discovery_games,
-    get_discovery_context
-)
+# Import the ENHANCED search module with aliasing for backward compatibility
+# This imports search_enhanced.py but allows it to be used as 'search'
+import search_enhanced 
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -216,10 +206,12 @@ class PaginatedResponse(BaseModel):
 
 # Additional models for new endpoints
 class SearchRequest(BaseModel):
-    query: str = Field(..., description="Search query text")
-    limit: int = Field(10, description="Maximum number of results to return")
-    offset: int = Field(0, description="Number of results to skip (for pagination)")
-    use_hybrid: bool = Field(True, description="Whether to use hybrid search")
+    query: str
+    limit: int = 12
+    offset: int = 0
+    use_hybrid: bool = True
+    use_sparse: bool = False
+    use_dense: bool = False
 
 class RecommendationRequest(BaseModel):
     game_id: str = Field(..., description="Steam App ID of the game")
@@ -314,11 +306,32 @@ async def search(request: SearchRequest, response: Response):
     """
     Search for games using text query.
     
-    This endpoint uses vector search (hybrid by default) to find games matching the query.
+    This endpoint uses vector search to find games matching the query.
+    Multiple search methods are supported:
+    - Hybrid search (default): Combines dense and sparse vectors
+    - Dense vector search: Uses embeddings for semantic search
+    - Sparse vector search: Uses keyword-based search
+    
     Results are paginated for easier frontend integration.
     """
     try:
-        results = search_games(request.query, request.limit + request.offset, request.use_hybrid)
+        # Determine which search method to use
+        use_hybrid = request.use_hybrid
+        use_sparse = request.use_sparse
+        use_dense = request.use_dense
+        
+        # Default to hybrid search if no specific method is selected
+        if not (use_hybrid or use_sparse or use_dense):
+            use_hybrid = True
+        
+        # Call the search_games function from the search module
+        results = search_enhanced.search_games(
+            request.query, 
+            request.limit + request.offset, 
+            use_hybrid=use_hybrid,
+            use_sparse=use_sparse,
+            use_dense=use_dense
+        )
         
         # Apply pagination
         total_results = len(results)
@@ -374,7 +387,7 @@ async def recommend(
     Results are paginated for easier frontend integration.
     """
     try:
-        results = recommend_games(game_id, limit + offset)
+        results = search_enhanced.get_game_recommendations(game_id, limit + offset)
         
         # Apply pagination
         total_results = len(results)
@@ -431,7 +444,7 @@ async def upload_data(
             f.write(await file.read())
         
         # Initialize collection
-        initialize_collection(file_path, collection_name, force_recreate)
+        search_enhanced.initialize_collection(file_path, collection_name, force_recreate)
         
         # Remove temporary file
         os.remove(file_path)
@@ -452,7 +465,7 @@ async def enhanced_recommend(request: EnhancedRecommendationRequest, response: R
     Results are paginated for easier frontend integration.
     """
     try:
-        results = get_enhanced_recommendations(
+        results = search_enhanced.get_enhanced_recommendations(
             positive_ids=request.positive_ids,
             negative_ids=request.negative_ids,
             query=request.query,
@@ -505,7 +518,7 @@ async def discover(request: DiscoveryRequest, response: Response):
     Results are paginated for easier frontend integration.
     """
     try:
-        results = get_discovery_recommendations(
+        results = search_enhanced.get_discovery_recommendations(
             liked_ids=request.liked_ids,
             disliked_ids=request.disliked_ids,
             limit=request.limit + request.offset
@@ -557,7 +570,7 @@ async def diverse_recommend(request: DiverseRecommendationRequest, response: Res
     Results are paginated for easier frontend integration.
     """
     try:
-        results = get_diverse_recommendations(
+        results = search_enhanced.get_diverse_recommendations(
             seed_id=request.seed_id,
             diversity_factor=request.diversity_factor,
             limit=request.limit + request.offset
@@ -608,7 +621,7 @@ async def random_games(limit: int = 9, response: Response = None):
     This endpoint is useful for starting the discovery process or exploring the catalog.
     """
     try:
-        results = get_random_games(limit)
+        results = search_enhanced.get_random_games(limit)
         
         # Convert to response model
         response_items = []
@@ -639,11 +652,11 @@ async def get_game_details(game_id: str, similar_limit: int = 5, response: Respo
     """
     try:
         # Get the game details
-        game = get_game_by_id(game_id)
+        game = search_enhanced.get_game_by_id(game_id)
         if not game:
             # Try to fetch directly from Steam API if not in database
             try:
-                steam_data = get_steam_game_description(game_id)
+                steam_data = search_enhanced.get_steam_game_description(game_id)
                 if steam_data and (steam_data['short_description'] or steam_data['detailed_description']):
                     # Create a minimal game object with Steam data
                     game = {
@@ -674,7 +687,7 @@ async def get_game_details(game_id: str, similar_limit: int = 5, response: Respo
                 )
         
         # Get similar games
-        similar_games = recommend_games(game_id, similar_limit)
+        similar_games = search_enhanced.get_game_recommendations(game_id, similar_limit)
         
         # Convert similar games to response model
         similar_games_response = []
@@ -725,7 +738,7 @@ async def suggest(query: str, limit: int = 5, response: Response = None):
             return []
             
         # Use search_games with a lower limit for quick suggestions
-        results = search_games(query, limit=limit, use_hybrid=True)
+        results = search_enhanced.search_games(query, limit=limit, use_hybrid=True)
         
         # Extract just the names and ids for suggestions
         suggestions = []
@@ -798,7 +811,7 @@ async def discovery_preferences(request: DiscoveryPreferencesRequest, response: 
         # Get new games based on current preferences
         if len(liked_ids) > 0:
             # If we have likes, use them to recommend more games
-            results = get_discovery_games(
+            results = search_enhanced.get_discovery_games(
                 excluded_ids=excluded_ids,
                 positive_ids=liked_ids,
                 negative_ids=disliked_ids,
@@ -806,7 +819,7 @@ async def discovery_preferences(request: DiscoveryPreferencesRequest, response: 
             )
         else:
             # If no likes yet, just get random games excluding any disliked ones
-            results = get_random_games(limit=request.limit, excluded_ids=excluded_ids)
+            results = search_enhanced.get_random_games(limit=request.limit, excluded_ids=excluded_ids)
         
         # Add cache headers if response is provided
         if response:
@@ -837,7 +850,7 @@ async def discovery_games(request: DiscoveryGamesRequest, response: Response = N
         excluded_ids = [int(id) if isinstance(id, str) and id.isdigit() else id for id in request.excluded_ids] if request.excluded_ids else None
         
         # Get discovery games
-        results = get_discovery_games(
+        results = search_enhanced.get_discovery_games(
             positive_ids=positive_ids,
             negative_ids=negative_ids,
             excluded_ids=excluded_ids,
@@ -882,7 +895,7 @@ async def discovery_context(
             game_id = int(game_id)
             
         # Get discovery context
-        results = get_discovery_context(
+        results = search_enhanced.get_discovery_context(
             game_id=game_id,
             limit=limit,
             excluded_ids=excluded_ids_list
