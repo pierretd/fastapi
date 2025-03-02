@@ -1,232 +1,98 @@
-# Steam Games Search API
+# Simplified Game Discovery
 
-An advanced search and recommendation API for Steam games, powered by FastAPI and vector search.
+A streamlined game discovery application focused on finding new games based on your preferences. This application provides a simple interface for discovering games through personalized recommendations.
 
 ## Features
 
-- **Search**: Find games using semantic search powered by vector embeddings
-- **Recommendations**: Get similar games based on various criteria
-- **Discovery**: Interactive exploration of the games catalog
-- **Game Details**: Get detailed information about specific games with similar recommendations
-- **Pagination**: All list-returning endpoints support pagination
-- **Suggestions**: Quick search suggestions based on partial input
+- **Discovery Interface**: Get game recommendations based on your likes and dislikes
+- **Game Details**: View detailed information about any game
+- **Similar Games**: Find games similar to ones you're interested in
 
-## API Endpoints
+## Architecture
 
-### Core Endpoints
+This application uses:
 
-- `POST /search` - Search for games by text query
-- `GET /recommend/{game_id}` - Get recommendations based on a specific game
-- `POST /enhanced-recommend` - Get recommendations based on multiple criteria
-- `POST /discover` - Interactive discovery with feedback
-- `POST /diverse-recommend` - Get diverse recommendations
-- `GET /random-games` - Get random games from the collection
-- `GET /game/{game_id}` - Get detailed information about a specific game
+- **Backend**: 
+  - FastAPI for the API server
+  - Qdrant for vector search
+  - FastEmbed for semantic embeddings
 
-### Utility Endpoints
+- **Frontend**:
+  - Next.js for the user interface
+  - React for component-based UI
+  - TailwindCSS for styling
 
-- `GET /suggest` - Get search suggestions based on partial input
-- `GET /health` - Health check endpoint
-- `GET /` - API information and endpoint listing
-- `POST /admin/upload` - Administrative endpoint for data uploads
+## Setup & Installation
 
-## Setup and Installation
+### Backend
 
-### Prerequisites
-
-- Python 3.8+
-- Qdrant vector database
-- FastAPI
-
-### Installation
-
-1. Clone this repository:
+1. Clone the repository
+2. Create a virtual environment: `python -m venv venv`
+3. Activate the virtual environment:
+   - Windows: `venv\Scripts\activate`
+   - Mac/Linux: `source venv/bin/activate`
+4. Install dependencies: `pip install -r requirements.txt`
+5. Create a `.env` file with the following variables:
    ```
-   git clone https://github.com/yourusername/steam-games-search-api.git
-   cd steam-games-search-api
+   QDRANT_URL=your_qdrant_url
+   QDRANT_API_KEY=your_qdrant_api_key
+   COLLECTION_NAME=steam_games_unique
+   EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+   CSV_FILE=path_to_your_games_data.csv
+   PORT=8000
    ```
+6. Upload data: `python upload_data.py`
+7. Run the backend: `python main.py`
 
-2. Create and activate a virtual environment:
+### Frontend
+
+1. Navigate to the frontend directory: `cd frontend`
+2. Install dependencies: `npm install`
+3. Create a `.env.local` file with:
    ```
-   python -m venv venv
-   source venv/bin/activate  # On Windows, use venv\Scripts\activate
+   NEXT_PUBLIC_API_URL=http://localhost:8000
    ```
+4. Run the frontend: `npm run dev`
+5. Access the application at `http://localhost:3000`
 
-3. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
+## Usage
 
-4. Create a `.env` file with your configuration:
-   ```
-   QDRANT_URL=http://localhost:6333
-   COLLECTION_NAME=steam_games
-   API_VERSION=1.0.0
-   ENABLE_RATE_LIMITING=false
-   DEFAULT_CACHE_DURATION=3600
-   ```
+1. **Game Discovery**:
+   - Like/dislike games to personalize recommendations
+   - View recommended games based on your preferences
 
-### Running the API
+2. **Game Details**:
+   - Click on a game to view detailed information
+   - See similar games at the bottom of the details page
 
-Start the API server:
-```
-uvicorn main:app --reload
-```
+## Data Format
 
-The API will be available at `http://localhost:8000`
+The CSV file should contain the following columns:
+- `steam_appid`: Unique identifier for the game
+- `name`: Name of the game
+- `price`: Price of the game in USD
+- `genres`: Comma-separated list of genres
+- `tags`: Comma-separated list of tags
+- `release_date`: Release date of the game
+- `developers`: Game developers
+- `publishers`: Game publishers 
+- `platforms`: Supported platforms
+- `short_description`: Short description of the game
+- `detailed_description`: Detailed description of the game
+- `header_image`: URL to the game's header image
 
-## API Documentation
+## Deployment
 
-Once the server is running, you can access the auto-generated interactive API documentation:
+### Backend
 
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+The backend can be deployed to any platform that supports Python, such as:
+- Render
+- Heroku
+- DigitalOcean
 
-## Search Features
+### Frontend
 
-### Text Search
-
-```
-POST /search
-{
-  "query": "open world RPG",
-  "limit": 10,
-  "offset": 0,
-  "use_hybrid": true
-}
-```
-
-### Game Recommendations
-
-```
-GET /recommend/123456?limit=10&offset=0
-```
-
-### Enhanced Recommendations
-
-```
-POST /enhanced-recommend
-{
-  "positive_ids": ["123456", "789012"],
-  "negative_ids": ["345678"],
-  "query": "with good story",
-  "limit": 10,
-  "offset": 0
-}
-```
-
-### Interactive Discovery
-
-```
-POST /discover
-{
-  "liked_ids": ["123456", "789012"],
-  "disliked_ids": ["345678"],
-  "limit": 9,
-  "offset": 0
-}
-```
-
-### Diverse Recommendations
-
-```
-POST /diverse-recommend
-{
-  "seed_id": "123456",
-  "diversity_factor": 0.5,
-  "limit": 10,
-  "offset": 0
-}
-```
-
-### Game Details with Similar Games
-
-```
-GET /game/123456?similar_limit=5
-```
-
-### Search Suggestions
-
-```
-GET /suggest?query=stra&limit=5
-```
-
-## Pagination
-
-All list-returning endpoints support pagination through `limit` and `offset` parameters. The response includes pagination metadata:
-
-```json
-{
-  "items": [...],
-  "total": 50,
-  "page": 1,
-  "page_size": 10,
-  "pages": 5
-}
-```
-
-## Caching
-
-The API implements caching headers to improve performance:
-
-```
-Cache-Control: public, max-age=3600
-```
-
-Different endpoints have different cache durations based on their content volatility.
-
-## Rate Limiting
-
-Optional rate limiting can be enabled through the `ENABLE_RATE_LIMITING` environment variable.
-
-## Error Handling
-
-Standardized error responses:
-
-```json
-{
-  "detail": "Detailed error message",
-  "code": "error_code",
-  "status_code": 404,
-  "path": "/endpoint/path"
-}
-```
-
-## Front-end Integration
-
-See [NEW_FEATURES.md](NEW_FEATURES.md) for detailed examples and guidance on integrating with a Next.js frontend.
-
-## Testing
-
-Run the tests to verify API functionality:
-
-```
-python test_recommendation_discovery.py
-python test_new_features.py
-```
-
-## Keep-Alive Functionality
-
-The API has built-in keep-alive functionality to prevent the server from going inactive after periods of no traffic (common with some hosting services that put applications to sleep after 5 minutes of inactivity).
-
-### Built-in Background Task
-
-By default, the API includes a background task that automatically pings the health endpoint every 4 minutes to keep the server active. The interval can be configured using the `KEEPALIVE_INTERVAL` environment variable (in seconds).
-
-```
-KEEPALIVE_INTERVAL=240  # 4 minutes in seconds
-```
-
-### Standalone Keep-Alive Script
-
-Alternatively, you can use the standalone keep-alive script if you prefer to run this separately:
-
-```
-python keep_alive.py --url https://your-api-url.com --interval 240
-```
-
-This script will periodically ping the API's health endpoint and log the results.
-
-## License
-
-MIT
+The Next.js frontend can be deployed to:
+- Vercel (recommended)
+- Netlify
+- GitHub Pages

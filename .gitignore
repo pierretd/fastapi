@@ -131,3 +131,23 @@ qdrant_data/
 # Debug files
 debug/
 debug.log
+
+# PID files (runtime files that shouldn't be in version control)
+*_pid.txt
+
+# Test files (only needed for development, not for deployment)
+test_*.py
+
+# Backup files
+*.backup
+*.bak
+*.backup*
+*copy*
+
+# Server output logs
+server_*.log
+server_output.log
+server_stdout.log
+
+# Exclude frontend directory (not needed for Render backend deployment)
+frontend/

@@ -4,7 +4,7 @@ import sys
 import pandas as pd
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, SparseVectorParams, SparseIndexParams, PointStruct, SparseVector
+from qdrant_client.models import Distance, VectorParams, SparseVectorParams, SparseIndexParams, PointStruct, SparseVector, Filter
 from fastembed import TextEmbedding
 from fastembed.sparse import SparseTextEmbedding  # Added for sparse embeddings
 import numpy as np
@@ -14,6 +14,12 @@ import requests
 import re
 from bs4 import BeautifulSoup
 from functools import lru_cache
+import logging
+from typing import List, Dict, Any
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -26,7 +32,7 @@ CSV_FILE = os.getenv("CSV_FILE", "jan-25-released-games copy.csv")
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", 100))
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 SPARSE_MODEL = os.getenv("SPARSE_MODEL", "prithivida/Splade_PP_en_v1")
-VECTOR_SIZE = 384  # BGE-small-en model size
+VECTOR_SIZE = int(os.getenv("VECTOR_SIZE", 384))
 
 print(f"Configuration:")
 print(f"  QDRANT_URL: {QDRANT_URL}")
