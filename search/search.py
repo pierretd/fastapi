@@ -6,10 +6,20 @@ from qdrant_client.models import (
     Distance, 
     SparseVectorParams, 
     SparseIndexParams, 
-    SparseVector
+    SparseVector,
+    Filter
 )
 
-from fastembed import TextEmbedding
+# Fix the fastembed import
+try:
+    from fastembed import TextEmbedding
+except ImportError:
+    # Fallback for newer versions of fastembed
+    try:
+        from fastembed.embedding import FlagEmbedding as TextEmbedding
+    except ImportError:
+        from fastembed import FlagEmbedding as TextEmbedding
+
 import os
 from dotenv import load_dotenv
 from tqdm import tqdm
@@ -23,14 +33,20 @@ import time
 from typing import List, Dict, Optional, Union, Any
 import sys
 import importlib.util
+import logging
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load environment variables and suppress warnings
 load_dotenv()
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # Environment variables
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "steam_games_with_sparse_dense")
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "steam_games_unique_20250302")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 SPARSE_MODEL = os.getenv("SPARSE_MODEL", "prithivida/Splade_PP_en_v1")
 VECTOR_SIZE = int(os.getenv("VECTOR_SIZE", 384))
@@ -38,7 +54,13 @@ BATCH_SIZE = int(os.getenv("BATCH_SIZE", 100))
 CSV_FILE = os.getenv("CSV_FILE", "jan-25-released-games copy.csv")
 
 # Connect to Qdrant
-qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+try:
+    qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+    logger.info(f"Connected to Qdrant at {QDRANT_URL}")
+except Exception as e:
+    logger.error(f"Failed to connect to Qdrant: {e}")
+    # Create a placeholder client that will be initialized later
+    qdrant = None
 
 # Add version-compatible methods to QdrantClient
 def set_model(self, model_name):

@@ -11,12 +11,32 @@ import time
 import logging
 from contextlib import asynccontextmanager
 
-from search import (
-    initialize_collection, 
-    search_games, 
-    get_game_by_id,
-    get_discovery_context
-)
+# Import from the search package
+try:
+    from search import (
+        initialize_collection, 
+        search_games, 
+        get_game_by_id,
+        get_discovery_context
+    )
+except ImportError as e:
+    logging.error(f"Error importing from search package: {e}")
+    # Define placeholder functions to allow the app to start even if imports fail
+    def initialize_collection():
+        logging.error("Search functionality not available - initialize_collection is a placeholder")
+        return
+    
+    def search_games(query, limit=10, offset=0):
+        logging.error("Search functionality not available - search_games is a placeholder")
+        return []
+    
+    def get_game_by_id(game_id):
+        logging.error("Search functionality not available - get_game_by_id is a placeholder")
+        return None
+    
+    def get_discovery_context(game_id, limit=9, excluded_ids=None):
+        logging.error("Search functionality not available - get_discovery_context is a placeholder")
+        return []
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -123,6 +143,8 @@ async def search(request: SearchRequest):
     """
     try:
         results = search_games(request.query, limit=request.limit, offset=request.offset)
+        if not results and isinstance(results, list):
+            return []
         return results
     except Exception as e:
         logger.error(f"Search error: {e}", exc_info=True)
@@ -158,6 +180,8 @@ async def get_similar_games(
     try:
         excluded = excluded_ids.split(",") if excluded_ids else []
         results = get_discovery_context(game_id, limit=limit, excluded_ids=excluded)
+        if not results and isinstance(results, list):
+            return []
         return results
     except Exception as e:
         logger.error(f"Error getting similar games: {e}", exc_info=True)
