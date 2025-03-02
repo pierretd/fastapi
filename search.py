@@ -179,18 +179,37 @@ def search_games(
         # Get the embedding for the query text
         vector = get_dense_embedding(query_text)
         
-        # Construct the search result using direct vector (no named vectors)
-        results = []
+        # Default to using only dense vectors
+        search_result = None
         
         try:
-            # Direct vector search (no named vectors)
-            search_result = qdrant.search(
-                collection_name=COLLECTION_NAME,
-                query_vector=vector,  # Direct vector search
-                limit=limit,
-                offset=offset,
-                with_payload=with_payload,
-            )
+            if use_hybrid:
+                # Try hybrid search first (combining dense and sparse vectors)
+                print(f"Attempting hybrid search with query: {query_text}")
+                
+                # For hybrid search, we need to use the correct vector names from our collection
+                search_result = qdrant.search(
+                    collection_name=COLLECTION_NAME,
+                    query_vector={
+                        "fast-bge-small-en": vector,  # Dense vector with the correct name
+                    },
+                    query_sparse_vector={
+                        "fast-sparse-splade_pp_en_v1": get_sparse_embedding(query_text)  # Sparse vector with correct name
+                    },
+                    limit=limit,
+                    offset=offset,
+                    with_payload=with_payload,
+                )
+            else:
+                # If hybrid is not requested, use just the dense vector
+                print(f"Using dense vector search with query: {query_text}")
+                search_result = qdrant.search(
+                    collection_name=COLLECTION_NAME,
+                    query_vector=("fast-bge-small-en", vector),  # Named dense vector
+                    limit=limit,
+                    offset=offset,
+                    with_payload=with_payload,
+                )
             
             # Format the results
             items = format_search_results(search_result)
@@ -204,17 +223,39 @@ def search_games(
                 "pages": math.ceil(len(items) / limit) if limit > 0 else 0,
             }
         except Exception as e:
-            # If direct vector search fails, try getting random games as fallback
-            print(f"Search failed, falling back to random games: {e}")
-            random_results = get_random_games(limit=limit)
-            
-            return {
-                "items": random_results,
-                "total": len(random_results),
-                "page": 1,
-                "page_size": limit,
-                "pages": 1,
-            }
+            print(f"Named vector search failed: {e}")
+            try:
+                # Fall back to direct vector search as last resort
+                search_result = qdrant.search(
+                    collection_name=COLLECTION_NAME,
+                    query_vector=vector,  # Direct vector fallback
+                    limit=limit,
+                    offset=offset,
+                    with_payload=with_payload,
+                )
+                
+                items = format_search_results(search_result)
+                
+                return {
+                    "items": items,
+                    "total": len(items),
+                    "page": offset // limit + 1 if limit > 0 else 1,
+                    "page_size": limit,
+                    "pages": math.ceil(len(items) / limit) if limit > 0 else 0,
+                }
+            except Exception as e2:
+                print(f"Direct vector search failed too: {e2}")
+                # If all search methods fail, try getting random games as fallback
+                print(f"Search failed, falling back to random games")
+                random_results = get_random_games(limit=limit)
+                
+                return {
+                    "items": random_results,
+                    "total": len(random_results),
+                    "page": 1,
+                    "page_size": limit,
+                    "pages": 1,
+                }
             
     except Exception as e:
         print(f"Error in search_games: {e}")
@@ -238,10 +279,11 @@ def get_game_recommendations(game_id, limit=5):
         list: Recommended games as dictionaries with id, payload, and score
     """
     try:
-        # Try to use direct recommendation without specifying vector name
+        # Try with named vector (matching collection config)
         recommend_results = qdrant.recommend(
             collection_name=COLLECTION_NAME,
             positive=[game_id],
+            using="fast-bge-small-en",  # Specify which vector to use for recommendations
             limit=limit,
             with_payload=True
         )
@@ -257,12 +299,32 @@ def get_game_recommendations(game_id, limit=5):
         
         return results
     except Exception as e:
-        print(f"Error getting recommendations: {e}")
-        # Fallback to random games if recommendation fails
+        print(f"Named vector recommendation failed: {e}")
         try:
-            return get_random_games(limit)
-        except:
-            return []
+            # Fallback to direct vector recommendation
+            recommend_results = qdrant.recommend(
+                collection_name=COLLECTION_NAME,
+                positive=[game_id],
+                limit=limit,
+                with_payload=True
+            )
+            
+            results = []
+            for point in recommend_results:
+                results.append({
+                    "id": str(point.id),
+                    "payload": point.payload if hasattr(point, 'payload') else {},
+                    "score": point.score
+                })
+            
+            return results
+        except Exception as e2:
+            print(f"Direct recommendation failed too: {e2}")
+            # Fallback to random games if all recommendation methods fail
+            try:
+                return get_random_games(limit)
+            except:
+                return []
 
 def get_enhanced_recommendations(positive_ids=None, negative_ids=None, query=None, limit=5):
     """
@@ -644,6 +706,25 @@ def format_search_results(search_result):
             "score": point.score
         })
     return results
+
+# Add a helper function to get sparse embeddings
+def get_sparse_embedding(text):
+    """Get sparse embedding for text"""
+    try:
+        # This is a placeholder - you would normally use a proper sparse embedding model
+        # For SPLADE or other sparse embedding methods
+        # For now, we'll create a simple TF-IDF like representation
+        tokens = text.lower().split()
+        sparse_vector = {}
+        for token in tokens:
+            if token in sparse_vector:
+                sparse_vector[token] += 1.0
+            else:
+                sparse_vector[token] = 1.0
+        return sparse_vector
+    except Exception as e:
+        print(f"Error generating sparse embedding: {e}")
+        return {}
 
 if __name__ == "__main__":
     # Check if collection exists and create/upload if needed
