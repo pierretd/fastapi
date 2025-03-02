@@ -10,7 +10,7 @@ from qdrant_client.models import (
     Filter
 )
 
-# Fix the fastembed import
+# Try to import fastembed with various fallbacks
 try:
     from fastembed import TextEmbedding
 except ImportError:
@@ -18,7 +18,37 @@ except ImportError:
     try:
         from fastembed.embedding import FlagEmbedding as TextEmbedding
     except ImportError:
-        from fastembed import FlagEmbedding as TextEmbedding
+        try:
+            from fastembed import FlagEmbedding as TextEmbedding
+        except ImportError:
+            logging.warning("Could not import TextEmbedding from fastembed")
+            # Define a placeholder
+            class TextEmbedding:
+                def __init__(self, model_name):
+                    self.model_name = model_name
+                    logging.warning(f"TextEmbedding is a placeholder (model: {model_name})")
+                
+                def embed(self, text):
+                    logging.warning("TextEmbedding.embed is a placeholder")
+                    # Return a dummy embedding of the correct size
+                    if isinstance(text, list):
+                        return [np.zeros(384) for _ in text]
+                    return [np.zeros(384)]
+
+# Try to import BeautifulSoup, but provide fallback if not available
+try:
+    from bs4 import BeautifulSoup
+    BS4_AVAILABLE = True
+except ImportError:
+    logging.warning("BeautifulSoup (bs4) is not available. HTML parsing will be limited.")
+    BS4_AVAILABLE = False
+    # Define a minimal fallback
+    class BeautifulSoup:
+        def __init__(self, markup, parser):
+            self.text = markup
+        
+        def get_text(self):
+            return self.text
 
 import os
 from dotenv import load_dotenv
@@ -26,7 +56,6 @@ from tqdm import tqdm
 import warnings
 import requests
 import re
-from bs4 import BeautifulSoup
 from functools import lru_cache
 import numpy as np
 import time

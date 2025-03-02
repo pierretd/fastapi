@@ -134,15 +134,31 @@ async def health_check():
     """Health check endpoint for monitoring."""
     return {"status": "ok"}
 
-# Search endpoint
+# Search endpoint - support both GET and POST
 @app.post("/search", response_model=List[GameSearchResponse])
-async def search(request: SearchRequest):
+@app.get("/search", response_model=List[GameSearchResponse])
+async def search(
+    query: Optional[str] = None,
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    request_body: Optional[SearchRequest] = None
+):
     """
     Search for games using a text query.
     Returns a list of games matching the search criteria.
     """
+    # Use query parameter or request body
+    search_query = query
+    if request_body and not search_query:
+        search_query = request_body.query
+        limit = request_body.limit
+        offset = request_body.offset
+    
+    if not search_query:
+        raise HTTPException(status_code=400, detail="Query parameter is required")
+    
     try:
-        results = search_games(request.query, limit=request.limit, offset=request.offset)
+        results = search_games(search_query, limit=limit, offset=offset)
         if not results and isinstance(results, list):
             return []
         return results
@@ -178,7 +194,7 @@ async def get_similar_games(
     Get games similar to a specific game.
     """
     try:
-        excluded = excluded_ids.split(",") if excluded_ids else []
+        excluded = excluded_ids.split(",") if excluded_ids and excluded_ids.strip() else []
         results = get_discovery_context(game_id, limit=limit, excluded_ids=excluded)
         if not results and isinstance(results, list):
             return []
