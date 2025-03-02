@@ -13,7 +13,7 @@ services:
       - key: QDRANT_API_KEY
         sync: false # Set this in the Render dashboard to your Qdrant Cloud API key
       - key: COLLECTION_NAME
-        value: steam_games_with_sparse_dense
+        value: steam_games_unique_20250302
       - key: CSV_FILE
         value: jan-25-released-games copy.csv
       - key: EMBEDDING_MODEL
